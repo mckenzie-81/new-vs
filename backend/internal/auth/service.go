@@ -29,11 +29,12 @@ var (
 )
 
 type Service struct {
-	pool *pgxpool.Pool
+	pool         *pgxpool.Pool
+	cookieSecure bool
 }
 
-func NewService(pool *pgxpool.Pool) *Service {
-	return &Service{pool: pool}
+func NewService(pool *pgxpool.Pool, cookieSecure bool) *Service {
+	return &Service{pool: pool, cookieSecure: cookieSecure}
 }
 
 type User struct {
@@ -63,7 +64,7 @@ func (s *Service) Login(ctx context.Context, email, password, ip, userAgent stri
 	var (
 		id, name, dbEmail, role, status, passwordHash string
 		failedAttempts                                int
-		lockedUntil                                    *time.Time
+		lockedUntil                                   *time.Time
 	)
 	err = tx.QueryRow(ctx, `
 		SELECT id, name, email, role, status, password_hash, failed_login_attempts, locked_until

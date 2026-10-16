@@ -8,25 +8,30 @@ import (
 	"net/http"
 
 	"backend/internal/audit"
+	"backend/internal/auth"
 	"backend/internal/httpx"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Handler struct {
-	service    *Service
-	pool       *pgxpool.Pool
-	appBaseURL string
+	service     *Service
+	authService *auth.Service
+	pool        *pgxpool.Pool
+	appBaseURL  string
 }
 
-func NewHandler(service *Service, pool *pgxpool.Pool, appBaseURL string) *Handler {
-	return &Handler{service: service, pool: pool, appBaseURL: appBaseURL}
+func NewHandler(service *Service, authService *auth.Service, pool *pgxpool.Pool, appBaseURL string) *Handler {
+	return &Handler{service: service, authService: authService, pool: pool, appBaseURL: appBaseURL}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/bootstrap/status", h.status)
 	mux.HandleFunc("POST /api/bootstrap/initiate", h.initiate)
 	mux.HandleFunc("GET /api/bootstrap/confirm", h.confirm)
+	mux.HandleFunc("POST /api/invite", h.createInvite)
+	mux.HandleFunc("POST /api/invite/accept", h.acceptInvite)
+	mux.HandleFunc("GET /api/people", h.listPeople)
 }
 
 func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
@@ -116,7 +121,7 @@ func (h *Handler) confirm(w http.ResponseWriter, r *http.Request) {
 	ip := httpx.ClientIP(r)
 	userAgent := r.Header.Get("User-Agent")
 
-	result, err := h.service.Confirm(r.Context(), token)
+	result, err := h.service.Confirm(r.Context(), token, "")
 
 	switch {
 	case err == nil:
@@ -151,6 +156,149 @@ func (h *Handler) confirm(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type createInviteRequest struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	Role  string `json:"role"`
+}
+
+func (h *Handler) createInvite(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.authService.Authorize(w, r, "SYSTEMADMIN")
+	if err != nil {
+		if errors.Is(err, auth.ErrForbidden) {
+			httpx.Error(w, http.StatusForbidden, "only a systemadmin can send invites")
+		} else {
+			httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+		}
+		return
+	}
+
+	var req createInviteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	ip := httpx.ClientIP(r)
+	userAgent := r.Header.Get("User-Agent")
+
+	result, err := h.service.InviteUser(r.Context(), InviteInput{
+		Name:  req.Name,
+		Email: req.Email,
+		Role:  req.Role,
+	})
+
+	switch {
+	case err == nil:
+		sendInviteEmailStub(h.appBaseURL, result.Email, result.Role, result.RawToken)
+
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &actor.ID,
+			Action:      "INVITE_CREATED",
+			Metadata: map[string]any{
+				"invited_name":  result.Name,
+				"invited_email": result.Email,
+				"invited_role":  result.Role,
+			},
+			IPAddress: ip,
+			UserAgent: userAgent,
+		})
+
+		httpx.JSON(w, http.StatusCreated, map[string]string{"status": "invited"})
+
+	case errors.Is(err, ErrInvalidRole):
+		httpx.Error(w, http.StatusBadRequest, "invalid role")
+
+	case errors.Is(err, ErrInvalidInput):
+		httpx.Error(w, http.StatusBadRequest, err.Error())
+
+	case errors.Is(err, ErrSystemadminCapReached):
+		httpx.Error(w, http.StatusConflict, "maximum number of systemadmins already exist")
+
+	case errors.Is(err, ErrEmailInUse):
+		httpx.Error(w, http.StatusConflict, "an account with this email already exists")
+
+	default:
+		log.Printf("invite creation failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to create invite")
+	}
+}
+
+type acceptInviteRequest struct {
+	Token    string `json:"token"`
+	Password string `json:"password"`
+}
+
+func (h *Handler) acceptInvite(w http.ResponseWriter, r *http.Request) {
+	var req acceptInviteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Token == "" {
+		httpx.Error(w, http.StatusBadRequest, "token is required")
+		return
+	}
+
+	ip := httpx.ClientIP(r)
+	userAgent := r.Header.Get("User-Agent")
+
+	result, err := h.service.Confirm(r.Context(), req.Token, req.Password)
+
+	switch {
+	case err == nil:
+		action := "INVITE_ACCEPTED"
+		if result.AlreadyActive {
+			action = "INVITE_ACCEPT_REPEATED"
+		}
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &result.UserID,
+			Action:      action,
+			Metadata: map[string]any{
+				"name":  result.Name,
+				"email": result.Email,
+				"role":  result.Role,
+			},
+			IPAddress: ip,
+			UserAgent: userAgent,
+		})
+		httpx.JSON(w, http.StatusOK, map[string]string{"status": "active"})
+
+	case errors.Is(err, ErrInvalidToken):
+		httpx.Error(w, http.StatusBadRequest, "invalid invite token")
+
+	case errors.Is(err, ErrTokenExpired):
+		httpx.Error(w, http.StatusGone, "this invite has expired")
+
+	case errors.Is(err, ErrInvalidInput):
+		httpx.Error(w, http.StatusBadRequest, err.Error())
+
+	default:
+		log.Printf("invite accept failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to accept invite")
+	}
+}
+
+func (h *Handler) listPeople(w http.ResponseWriter, r *http.Request) {
+	if _, err := h.authService.Authorize(w, r, "SYSTEMADMIN"); err != nil {
+		if errors.Is(err, auth.ErrForbidden) {
+			httpx.Error(w, http.StatusForbidden, "not authorized")
+		} else {
+			httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+		}
+		return
+	}
+
+	people, err := h.service.ListPeople(r.Context())
+	if err != nil {
+		log.Printf("listing people failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to list people")
+		return
+	}
+
+	httpx.JSON(w, http.StatusOK, people)
+}
+
 func (h *Handler) logAudit(ctx context.Context, entry audit.Entry) {
 	if err := audit.Log(ctx, h.pool, entry); err != nil {
 		log.Printf("failed to write audit log for action %q: %v", entry.Action, err)
@@ -163,4 +311,9 @@ func (h *Handler) logAudit(ctx context.Context, entry audit.Entry) {
 func sendVerificationEmailStub(appBaseURL, email, rawToken string) {
 	link := appBaseURL + "/bootstrap/confirm?token=" + rawToken
 	log.Printf("[EMAIL STUB] verification link for %s: %s", email, link)
+}
+
+func sendInviteEmailStub(appBaseURL, email, role, rawToken string) {
+	link := appBaseURL + "/invite/accept?token=" + rawToken
+	log.Printf("[EMAIL STUB] invite link for %s (%s): %s", email, role, link)
 }

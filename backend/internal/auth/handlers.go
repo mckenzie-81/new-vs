@@ -51,7 +51,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case err == nil:
-		h.setSessionCookie(w, result.RawToken, result.ExpiresAt)
+		setSessionCookie(w, result.RawToken, result.ExpiresAt, h.cookieSecure)
 		h.logAudit(r.Context(), audit.Entry{
 			ActorUserID: &result.User.ID,
 			Action:      "LOGIN_SUCCEEDED",
@@ -98,7 +98,7 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.Logout(r.Context(), rawToken); err != nil {
 		log.Printf("logout failed: %v", err)
 	}
-	h.clearSessionCookie(w)
+	clearSessionCookie(w, h.cookieSecure)
 	httpx.JSON(w, http.StatusOK, map[string]string{"status": "logged_out"})
 }
 
@@ -106,7 +106,7 @@ func (h *Handler) session(w http.ResponseWriter, r *http.Request) {
 	rawToken := readSessionCookie(r)
 	user, err := h.service.ValidateSession(r.Context(), rawToken, httpx.ClientIP(r), r.Header.Get("User-Agent"))
 	if err != nil {
-		h.clearSessionCookie(w)
+		clearSessionCookie(w, h.cookieSecure)
 		httpx.Error(w, http.StatusUnauthorized, "not authenticated")
 		return
 	}
@@ -118,25 +118,25 @@ func (h *Handler) session(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) setSessionCookie(w http.ResponseWriter, rawToken string, expiresAt time.Time) {
+func setSessionCookie(w http.ResponseWriter, rawToken string, expiresAt time.Time, secure bool) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    rawToken,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   h.cookieSecure,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 		Expires:  expiresAt,
 	})
 }
 
-func (h *Handler) clearSessionCookie(w http.ResponseWriter) {
+func clearSessionCookie(w http.ResponseWriter, secure bool) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   h.cookieSecure,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})

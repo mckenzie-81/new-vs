@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ApiError, confirmBootstrap } from "@/lib/api";
 import { CenteredCard, CenteredMessage } from "@/components/layout/centered-card";
-import { CheckIcon } from "@/components/ui/status-icon";
 
 type ConfirmState = "confirming" | "active" | "invalid" | "expired" | "error";
 
@@ -34,14 +33,11 @@ const content: Record<
 export default function ConfirmClient() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
-  const [state, setState] = useState<ConfirmState>("confirming");
+  const [state, setState] = useState<ConfirmState>(token ? "confirming" : "invalid");
   const requestedToken = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!token) {
-      setState("invalid");
-      return;
-    }
+    if (!token) return;
 
     // Guards against React Strict Mode's intentional double-invoke of
     // effects in development, which would otherwise fire this request
@@ -73,7 +69,6 @@ export default function ConfirmClient() {
   return (
     <CenteredCard>
       <div className="text-center">
-        {state === "active" && <CheckIcon />}
         <h1 className="mb-2 text-xl font-semibold tracking-tight">{heading}</h1>
         <p className="text-sm leading-relaxed text-ink-muted">{body}</p>
         {state !== "active" && (

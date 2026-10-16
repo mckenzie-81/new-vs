@@ -30,11 +30,11 @@ func main() {
 		log.Fatalf("migration error: %v", err)
 	}
 
-	bootstrapService := bootstrap.NewService(pool, cfg.BootstrapSecret)
-	bootstrapHandler := bootstrap.NewHandler(bootstrapService, pool, cfg.AppBaseURL)
-
-	authService := auth.NewService(pool)
+	authService := auth.NewService(pool, cfg.CookieSecure)
 	authHandler := auth.NewHandler(authService, pool, cfg.CookieSecure)
+
+	bootstrapService := bootstrap.NewService(pool, cfg.BootstrapSecret)
+	bootstrapHandler := bootstrap.NewHandler(bootstrapService, authService, pool, cfg.AppBaseURL)
 
 	mux := http.NewServeMux()
 	bootstrapHandler.Register(mux)

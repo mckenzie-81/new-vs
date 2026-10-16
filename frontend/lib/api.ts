@@ -87,3 +87,44 @@ export async function getSession(): Promise<SessionUser> {
   const response = await apiFetch("/api/session");
   return response.json();
 }
+
+export type InvitableRole = "SYSTEMADMIN" | "ADMIN" | "APPROVER";
+
+export async function createInvite(
+  name: string,
+  email: string,
+  role: InvitableRole
+): Promise<{ status: string }> {
+  const response = await apiFetch("/api/invite", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, email, role }),
+  });
+  return response.json();
+}
+
+export async function acceptInvite(
+  token: string,
+  password: string
+): Promise<{ status: string }> {
+  const response = await apiFetch("/api/invite/accept", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, password }),
+  });
+  return response.json();
+}
+
+export interface Person {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  status: string;
+  createdAt: string;
+}
+
+export async function listPeople(): Promise<Person[]> {
+  const response = await apiFetch("/api/people");
+  return response.json();
+}

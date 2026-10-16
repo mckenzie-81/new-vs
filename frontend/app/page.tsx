@@ -1,17 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ApiError, getBootstrapStatus, initiateBootstrap } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
-import { MailIcon } from "@/components/ui/status-icon";
 import { CenteredCard, CenteredMessage } from "@/components/layout/centered-card";
 
-type ViewState = "checking" | "unavailable" | "form" | "pending" | "load-error";
+type ViewState = "checking" | "form" | "pending" | "load-error";
 
 export default function Home() {
+  const router = useRouter();
   const [view, setView] = useState<ViewState>("checking");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -24,9 +24,15 @@ export default function Home() {
 
   useEffect(() => {
     getBootstrapStatus()
-      .then(({ available }) => setView(available ? "form" : "unavailable"))
+      .then(({ available }) => {
+        if (available) {
+          setView("form");
+        } else {
+          router.replace("/login");
+        }
+      })
       .catch(() => setView("load-error"));
-  }, []);
+  }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -39,8 +45,11 @@ export default function Home() {
       setView("pending");
     } catch (err) {
       if (err instanceof ApiError) {
-        setFormError(err.message);
-        if (err.status === 409) setView("unavailable");
+        if (err.status === 409) {
+          router.replace("/login");
+        } else {
+          setFormError(err.message);
+        }
       } else {
         setFormError("Something went wrong. Please try again.");
       }
@@ -62,29 +71,10 @@ export default function Home() {
     );
   }
 
-  if (view === "unavailable") {
-    return (
-      <CenteredCard>
-        <div className="text-center">
-          <p className="text-sm leading-relaxed text-ink-muted">
-            Setup has already been completed for this system.
-          </p>
-          <Link
-            href="/login"
-            className="mt-4 inline-block text-sm text-accent hover:underline"
-          >
-            Sign in
-          </Link>
-        </div>
-      </CenteredCard>
-    );
-  }
-
   if (view === "pending") {
     return (
       <CenteredCard>
         <div className="text-center">
-          <MailIcon />
           <h1 className="mb-2 text-xl font-semibold tracking-tight">
             Check your email
           </h1>
@@ -103,7 +93,7 @@ export default function Home() {
 
   return (
     <CenteredCard>
-      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.09em] text-accent">
+      <div className="mb-3 border-l-2 border-accent pl-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
         One-time setup
       </div>
       <h1 className="mb-2 text-[23px] font-semibold leading-tight tracking-tight">
@@ -114,7 +104,7 @@ export default function Home() {
         that was issued when it was deployed to continue.
       </p>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-[18px]">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
         <Field label="Full name" htmlFor="name">
           <Input
             id="name"
