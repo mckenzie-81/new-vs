@@ -1,0 +1,166 @@
+package bootstrap
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"log"
+	"net/http"
+
+	"backend/internal/audit"
+	"backend/internal/httpx"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type Handler struct {
+	service    *Service
+	pool       *pgxpool.Pool
+	appBaseURL string
+}
+
+func NewHandler(service *Service, pool *pgxpool.Pool, appBaseURL string) *Handler {
+	return &Handler{service: service, pool: pool, appBaseURL: appBaseURL}
+}
+
+func (h *Handler) Register(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/bootstrap/status", h.status)
+	mux.HandleFunc("POST /api/bootstrap/initiate", h.initiate)
+	mux.HandleFunc("GET /api/bootstrap/confirm", h.confirm)
+}
+
+func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
+	available, err := h.service.Available(r.Context())
+	if err != nil {
+		log.Printf("bootstrap status check failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to check bootstrap status")
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]bool{"available": available})
+}
+
+type initiateRequest struct {
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	Secret   string `json:"secret"`
+}
+
+func (h *Handler) initiate(w http.ResponseWriter, r *http.Request) {
+	var req initiateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	ip := httpx.ClientIP(r)
+	userAgent := r.Header.Get("User-Agent")
+
+	result, err := h.service.Initiate(r.Context(), InitiateInput{
+		Name:     req.Name,
+		Email:    req.Email,
+		Password: req.Password,
+		Secret:   req.Secret,
+	})
+
+	switch {
+	case err == nil:
+		// outside the DB transaction: stand-in for real email delivery,
+		// which is its own piece we haven't built yet.
+		sendVerificationEmailStub(h.appBaseURL, result.Email, result.RawToken)
+
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &result.UserID,
+			Action:      "BOOTSTRAP_INITIATED",
+			Metadata: map[string]any{
+				"name":  result.Name,
+				"email": result.Email,
+			},
+			IPAddress: ip,
+			UserAgent: userAgent,
+		})
+
+		httpx.JSON(w, http.StatusCreated, map[string]string{"status": "pending_verification"})
+
+	case errors.Is(err, ErrAlreadyBootstrapped):
+		httpx.Error(w, http.StatusConflict, "bootstrap is no longer available")
+
+	case errors.Is(err, ErrInvalidSecret):
+		h.logAudit(r.Context(), audit.Entry{
+			Action: "BOOTSTRAP_INITIATE_REJECTED",
+			Metadata: map[string]any{
+				"reason":          "invalid_secret",
+				"email_attempted": req.Email,
+			},
+			IPAddress: ip,
+			UserAgent: userAgent,
+		})
+		httpx.Error(w, http.StatusForbidden, "invalid bootstrap secret")
+
+	case errors.Is(err, ErrInvalidInput):
+		httpx.Error(w, http.StatusBadRequest, err.Error())
+
+	default:
+		log.Printf("bootstrap initiate failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to initiate bootstrap")
+	}
+}
+
+func (h *Handler) confirm(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		httpx.Error(w, http.StatusBadRequest, "token is required")
+		return
+	}
+
+	ip := httpx.ClientIP(r)
+	userAgent := r.Header.Get("User-Agent")
+
+	result, err := h.service.Confirm(r.Context(), token)
+
+	switch {
+	case err == nil:
+		action := "SYSTEMADMIN_BOOTSTRAPPED"
+		if result.AlreadyActive {
+			// Same token confirmed again (email link scanner, double-click,
+			// a retried request) - worth a trace in the audit log, but it
+			// must never look like the account was activated twice.
+			action = "BOOTSTRAP_CONFIRM_REPEATED"
+		}
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &result.UserID,
+			Action:      action,
+			Metadata: map[string]any{
+				"name":  result.Name,
+				"email": result.Email,
+			},
+			IPAddress: ip,
+			UserAgent: userAgent,
+		})
+		httpx.JSON(w, http.StatusOK, map[string]string{"status": "active"})
+
+	case errors.Is(err, ErrInvalidToken):
+		httpx.Error(w, http.StatusBadRequest, "invalid verification token")
+
+	case errors.Is(err, ErrTokenExpired):
+		httpx.Error(w, http.StatusGone, "verification token has expired, please restart setup")
+
+	default:
+		log.Printf("bootstrap confirm failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to confirm bootstrap")
+	}
+}
+
+func (h *Handler) logAudit(ctx context.Context, entry audit.Entry) {
+	if err := audit.Log(ctx, h.pool, entry); err != nil {
+		log.Printf("failed to write audit log for action %q: %v", entry.Action, err)
+	}
+}
+
+// sendVerificationEmailStub stands in for real transactional email, which is
+// a separate piece of the system not yet designed. For now it just surfaces
+// the link a real email would contain.
+func sendVerificationEmailStub(appBaseURL, email, rawToken string) {
+	link := appBaseURL + "/bootstrap/confirm?token=" + rawToken
+	log.Printf("[EMAIL STUB] verification link for %s: %s", email, link)
+}
