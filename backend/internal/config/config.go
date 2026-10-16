@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 type Config struct {
@@ -10,6 +11,7 @@ type Config struct {
 	BootstrapSecret string
 	Port            string
 	AppBaseURL      string
+	CookieSecure    bool
 }
 
 func Load() (*Config, error) {
@@ -32,6 +34,7 @@ func Load() (*Config, error) {
 	if cfg.AppBaseURL == "" {
 		cfg.AppBaseURL = "http://localhost:3000"
 	}
+	cfg.CookieSecure = strings.HasPrefix(cfg.AppBaseURL, "https://")
 
 	return cfg, nil
 }

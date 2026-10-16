@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"backend/internal/auth"
 	"backend/internal/bootstrap"
 	"backend/internal/config"
 	"backend/internal/db"
@@ -32,8 +33,12 @@ func main() {
 	bootstrapService := bootstrap.NewService(pool, cfg.BootstrapSecret)
 	bootstrapHandler := bootstrap.NewHandler(bootstrapService, pool, cfg.AppBaseURL)
 
+	authService := auth.NewService(pool)
+	authHandler := auth.NewHandler(authService, pool, cfg.CookieSecure)
+
 	mux := http.NewServeMux()
 	bootstrapHandler.Register(mux)
+	authHandler.Register(mux)
 
 	handler := httpx.CORS(cfg.AppBaseURL, mux)
 

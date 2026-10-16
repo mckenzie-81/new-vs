@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { ApiError, getBootstrapStatus, initiateBootstrap } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,10 +64,19 @@ export default function Home() {
 
   if (view === "unavailable") {
     return (
-      <CenteredMessage>
-        Setup has already been completed for this system. If you need access,
-        contact whoever administers it.
-      </CenteredMessage>
+      <CenteredCard>
+        <div className="text-center">
+          <p className="text-sm leading-relaxed text-ink-muted">
+            Setup has already been completed for this system.
+          </p>
+          <Link
+            href="/login"
+            className="mt-4 inline-block text-sm text-accent hover:underline"
+          >
+            Sign in
+          </Link>
+        </div>
+      </CenteredCard>
     );
   }
 

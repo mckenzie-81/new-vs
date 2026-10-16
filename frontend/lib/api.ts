@@ -19,11 +19,22 @@ async function parseErrorMessage(response: Response): Promise<string> {
   return `Request failed with status ${response.status}`;
 }
 
-export async function getBootstrapStatus(): Promise<{ available: boolean }> {
-  const response = await fetch(`${API_BASE_URL}/api/bootstrap/status`);
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  // credentials: "include" always - the session cookie only ever matters
+  // for auth-related calls, but sending it everywhere means no future
+  // endpoint can silently forget it.
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    credentials: "include",
+  });
   if (!response.ok) {
     throw new ApiError(response.status, await parseErrorMessage(response));
   }
+  return response;
+}
+
+export async function getBootstrapStatus(): Promise<{ available: boolean }> {
+  const response = await apiFetch("/api/bootstrap/status");
   return response.json();
 }
 
@@ -37,23 +48,42 @@ export interface InitiateBootstrapInput {
 export async function initiateBootstrap(
   input: InitiateBootstrapInput
 ): Promise<{ status: string }> {
-  const response = await fetch(`${API_BASE_URL}/api/bootstrap/initiate`, {
+  const response = await apiFetch("/api/bootstrap/initiate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  if (!response.ok) {
-    throw new ApiError(response.status, await parseErrorMessage(response));
-  }
   return response.json();
 }
 
 export async function confirmBootstrap(token: string): Promise<{ status: string }> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/bootstrap/confirm?token=${encodeURIComponent(token)}`
+  const response = await apiFetch(
+    `/api/bootstrap/confirm?token=${encodeURIComponent(token)}`
   );
-  if (!response.ok) {
-    throw new ApiError(response.status, await parseErrorMessage(response));
-  }
+  return response.json();
+}
+
+export interface SessionUser {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+}
+
+export async function login(email: string, password: string): Promise<SessionUser> {
+  const response = await apiFetch("/api/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  return response.json();
+}
+
+export async function logout(): Promise<void> {
+  await apiFetch("/api/logout", { method: "POST" });
+}
+
+export async function getSession(): Promise<SessionUser> {
+  const response = await apiFetch("/api/session");
   return response.json();
 }
