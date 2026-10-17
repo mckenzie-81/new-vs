@@ -32,6 +32,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/invite", h.createInvite)
 	mux.HandleFunc("POST /api/invite/accept", h.acceptInvite)
 	mux.HandleFunc("GET /api/people", h.listPeople)
+	mux.HandleFunc("DELETE /api/people/{id}", h.revokeInvite)
 }
 
 func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
@@ -297,6 +298,50 @@ func (h *Handler) listPeople(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httpx.JSON(w, http.StatusOK, people)
+}
+
+func (h *Handler) revokeInvite(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.authService.Authorize(w, r, "SYSTEMADMIN")
+	if err != nil {
+		if errors.Is(err, auth.ErrForbidden) {
+			httpx.Error(w, http.StatusForbidden, "not authorized")
+		} else {
+			httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+		}
+		return
+	}
+
+	id := r.PathValue("id")
+	ip := httpx.ClientIP(r)
+	userAgent := r.Header.Get("User-Agent")
+
+	revoked, err := h.service.RevokeInvite(r.Context(), id)
+
+	switch {
+	case err == nil:
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &actor.ID,
+			Action:      "INVITE_REVOKED",
+			Metadata: map[string]any{
+				"revoked_name":  revoked.Name,
+				"revoked_email": revoked.Email,
+				"revoked_role":  revoked.Role,
+			},
+			IPAddress: ip,
+			UserAgent: userAgent,
+		})
+		httpx.JSON(w, http.StatusOK, map[string]string{"status": "revoked"})
+
+	case errors.Is(err, ErrPersonNotFound):
+		httpx.Error(w, http.StatusNotFound, "no such person")
+
+	case errors.Is(err, ErrNotPending):
+		httpx.Error(w, http.StatusConflict, "only a pending invite can be revoked")
+
+	default:
+		log.Printf("invite revoke failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to revoke invite")
+	}
 }
 
 func (h *Handler) logAudit(ctx context.Context, entry audit.Entry) {

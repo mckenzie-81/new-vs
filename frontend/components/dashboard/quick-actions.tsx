@@ -11,7 +11,7 @@ const actions: Action[] = [
   {
     title: "Invite someone",
     description: "Add an admin, approver, or systemadmin",
-    href: "/dashboard/people",
+    href: "/dashboard/administrators",
     roles: ["SYSTEMADMIN"],
   },
   {

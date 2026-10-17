@@ -7,10 +7,11 @@ import { AdminHeader } from "@/components/dashboard/admin-header";
 import { Breadcrumbs } from "@/components/dashboard/breadcrumbs";
 import { PersonRow } from "@/components/dashboard/person-row";
 import { InviteForm } from "@/components/dashboard/invite-form";
+import { RoleReference } from "@/components/dashboard/role-reference";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 
-export default function PeoplePage() {
+export default function AdministratorsPage() {
   const user = useDashboardUser();
   const [people, setPeople] = useState<Person[] | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -29,10 +30,10 @@ export default function PeoplePage() {
 
   return (
     <div>
-      <Breadcrumbs items={[{ label: "Dashboard", href: "/dashboard" }, { label: "People" }]} />
+      <Breadcrumbs items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Administrators" }]} />
       <AdminHeader
-        title="People"
-        intro="Admins, approvers, and systemadmins."
+        title="Administrators"
+        intro="Systemadmins, admins, and approvers."
         actions={
           <Button className="w-auto px-5" onClick={() => setInviteOpen(true)}>
             Invite
@@ -51,10 +52,14 @@ export default function PeoplePage() {
       {people !== null && others.length > 0 && (
         <ul className="divide-y divide-line border-t border-line">
           {people.map((person) => (
-            <PersonRow key={person.id} person={person} />
+            <PersonRow key={person.id} person={person} onChange={refresh} />
           ))}
         </ul>
       )}
+
+      <div className="mt-12">
+        <RoleReference />
+      </div>
 
       {inviteOpen && (
         <Modal title="Invite someone" onClose={() => setInviteOpen(false)}>

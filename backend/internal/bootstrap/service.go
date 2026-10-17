@@ -37,6 +37,8 @@ var (
 	ErrInvalidRole           = errors.New("invalid role")
 	ErrSystemadminCapReached = errors.New("maximum number of systemadmins already exist")
 	ErrEmailInUse            = errors.New("an active account with this email already exists")
+	ErrPersonNotFound        = errors.New("no such person")
+	ErrNotPending            = errors.New("only a pending invite can be revoked")
 )
 
 var invitableRoles = map[string]bool{
@@ -440,6 +442,50 @@ func (s *Service) ListPeople(ctx context.Context) ([]Person, error) {
 	}
 
 	return people, nil
+}
+
+type RevokedPerson struct {
+	Name  string
+	Email string
+	Role  string
+}
+
+// RevokeInvite cancels a pending invite before it's accepted. It only ever
+// touches PENDING_VERIFICATION rows - revoking access from someone already
+// active is a materially different, more consequential action and isn't
+// what this does.
+func (s *Service) RevokeInvite(ctx context.Context, id string) (*RevokedPerson, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var p RevokedPerson
+	var status string
+	err = tx.QueryRow(ctx, `
+		SELECT name, email, role, status FROM users WHERE id = $1 FOR UPDATE
+	`, id).Scan(&p.Name, &p.Email, &p.Role, &status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrPersonNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("looking up person: %w", err)
+	}
+
+	if status != "PENDING_VERIFICATION" {
+		return nil, ErrNotPending
+	}
+
+	if _, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, id); err != nil {
+		return nil, fmt.Errorf("revoking invite: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("committing revoke: %w", err)
+	}
+
+	return &p, nil
 }
 
 func validateInitiateInput(in InitiateInput) error {

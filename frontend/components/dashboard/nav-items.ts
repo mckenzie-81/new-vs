@@ -38,8 +38,8 @@ export const navSections: NavSection[] = [
         roles: ["SYSTEMADMIN", "ADMIN", "APPROVER"],
       },
       {
-        label: "People",
-        href: "/dashboard/people",
+        label: "Administrators",
+        href: "/dashboard/administrators",
         icon: UsersIcon,
         roles: ["SYSTEMADMIN"],
       },

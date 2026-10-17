@@ -29,23 +29,27 @@ export default function OverviewPage() {
       {user.role === "SYSTEMADMIN" && (
         <StatRow
           stats={[
-            { label: "People", value: people ? people.length : "–", href: "/dashboard/people" },
+            {
+              label: "Administrators",
+              value: people ? people.length : "–",
+              href: "/dashboard/administrators",
+            },
             {
               label: "Admins",
               value: people ? people.filter((p) => p.role === "ADMIN").length : "–",
-              href: "/dashboard/people",
+              href: "/dashboard/administrators",
             },
             {
               label: "Approvers",
               value: people ? people.filter((p) => p.role === "APPROVER").length : "–",
-              href: "/dashboard/people",
+              href: "/dashboard/administrators",
             },
             {
               label: "Pending invites",
               value: people
                 ? people.filter((p) => p.status === "PENDING_VERIFICATION").length
                 : "–",
-              href: "/dashboard/people",
+              href: "/dashboard/administrators",
             },
           ]}
         />

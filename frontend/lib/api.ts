@@ -128,3 +128,8 @@ export async function listPeople(): Promise<Person[]> {
   const response = await apiFetch("/api/people");
   return response.json();
 }
+
+export async function revokeInvite(id: string): Promise<{ status: string }> {
+  const response = await apiFetch(`/api/people/${id}`, { method: "DELETE" });
+  return response.json();
+}
