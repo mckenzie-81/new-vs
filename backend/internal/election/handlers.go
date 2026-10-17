@@ -741,7 +741,7 @@ func (h *Handler) submitForApproval(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, ErrElectionNotDraft):
 		httpx.Error(w, http.StatusConflict, err.Error())
 
-	case errors.Is(err, ErrEmptyBallot), errors.Is(err, ErrPortfolioEmpty), errors.Is(err, ErrNoEligibleVoters):
+	case errors.Is(err, ErrEmptyBallot), errors.Is(err, ErrPortfolioEmpty), errors.Is(err, ErrNoElectorateDatabase), errors.Is(err, ErrNoEligibleVoters):
 		httpx.Error(w, http.StatusBadRequest, err.Error())
 
 	default:

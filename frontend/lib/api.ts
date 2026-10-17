@@ -144,7 +144,7 @@ export interface Election {
   createdBy: string;
   approvedBy: string | null;
   rejectionReason: string | null;
-  electorateDatabaseId: string;
+  electorateDatabaseId: string | null;
   electorateFilter: Record<string, string>;
   createdAt: string;
   updatedAt: string;
@@ -407,12 +407,15 @@ export interface UploadResult {
   skipped: number;
 }
 
-export interface ElectorateSummary {
-  databaseId: string;
-  databaseName: string;
-  filter: Record<string, string>;
-  eligibleCount: number;
-}
+export type ElectorateSummary =
+  | { linked: false; databaseId: null; databaseName: null; filter: Record<string, string>; eligibleCount: number }
+  | {
+      linked: true;
+      databaseId: string;
+      databaseName: string;
+      filter: Record<string, string>;
+      eligibleCount: number;
+    };
 
 export async function createElectorateDatabase(
   name: string,

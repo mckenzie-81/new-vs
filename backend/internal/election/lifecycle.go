@@ -10,11 +10,12 @@ import (
 const maxRejectionReasonLength = 1000
 
 var (
-	ErrEmptyBallot        = errors.New("add at least one portfolio with a candidate before submitting for approval")
-	ErrPortfolioEmpty     = errors.New("every portfolio needs at least one candidate before submitting for approval")
-	ErrNoEligibleVoters   = errors.New("the linked electorate has no eligible voters - check the database and filter before submitting")
-	ErrElectionNotClosed  = errors.New("only a closed election can be archived")
-	ErrNotPendingApproval = errors.New("only an election awaiting approval can be approved or rejected")
+	ErrEmptyBallot          = errors.New("add at least one portfolio with a candidate before submitting for approval")
+	ErrPortfolioEmpty       = errors.New("every portfolio needs at least one candidate before submitting for approval")
+	ErrNoElectorateDatabase = errors.New("link an electorate database before submitting for approval")
+	ErrNoEligibleVoters     = errors.New("the linked electorate has no eligible voters - check the database and filter before submitting")
+	ErrElectionNotClosed    = errors.New("only a closed election can be archived")
+	ErrNotPendingApproval   = errors.New("only an election awaiting approval can be approved or rejected")
 )
 
 // SubmitForApproval moves a draft to PENDING_APPROVAL. It refuses an empty
@@ -43,7 +44,11 @@ func (s *Service) SubmitForApproval(ctx context.Context, electionID string) (*El
 		}
 	}
 
-	eligibleCount, err := s.electorate.CountEligible(ctx, e.ElectorateDatabaseID, e.ElectorateFilter)
+	if e.ElectorateDatabaseID == nil {
+		return nil, ErrNoElectorateDatabase
+	}
+
+	eligibleCount, err := s.electorate.CountEligible(ctx, *e.ElectorateDatabaseID, e.ElectorateFilter)
 	if err != nil {
 		return nil, fmt.Errorf("checking electorate: %w", err)
 	}

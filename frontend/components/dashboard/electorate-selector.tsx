@@ -68,19 +68,18 @@ export function ElectorateSelector({
       <Field
         label="Electorate database"
         htmlFor="electorate-database"
-        hint="Who's eligible to vote in this election."
+        hint="Who's eligible to vote in this election. Optional for now - add one before submitting for approval."
       >
         <Select
           id="electorate-database"
-          required
           value={databaseId}
           onChange={(e) => {
             onDatabaseChange(e.target.value);
             onFilterChange({});
           }}
         >
-          <option value="" disabled>
-            {databases === null ? "Loading..." : "Choose a database"}
+          <option value="">
+            {databases === null ? "Loading..." : "No electorate database yet"}
           </option>
           {databases?.map((db) => (
             <option key={db.id} value={db.id}>

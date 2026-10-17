@@ -29,7 +29,15 @@ export default function ElectionElectoratePage() {
 
       {!summary && !error && <p className="py-10 text-sm text-ink-faint">Loading...</p>}
 
-      {summary && (
+      {summary && !summary.linked && (
+        <p className="py-10 text-sm text-ink-faint">
+          No electorate database linked yet.
+          {election.status === "DRAFT" &&
+            " Use the edit button on this election to add one before submitting for approval."}
+        </p>
+      )}
+
+      {summary && summary.linked && (
         <div className="border-t border-line pt-6">
           <p className="text-4xl font-semibold tracking-tight tabular-nums">
             {summary.eligibleCount}

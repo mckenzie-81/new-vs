@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { listElections, Election } from "@/lib/api";
+import { listElections, ApiError, Election } from "@/lib/api";
 import { useDashboardUser } from "@/components/dashboard/user-context";
 import { AdminHeader } from "@/components/dashboard/admin-header";
 import { Breadcrumbs } from "@/components/dashboard/breadcrumbs";
@@ -13,12 +13,14 @@ import { Button } from "@/components/ui/button";
 export default function ElectionsPage() {
   const user = useDashboardUser();
   const [elections, setElections] = useState<Election[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
 
   const refresh = useCallback(() => {
+    setError(null);
     listElections()
       .then(setElections)
-      .catch(() => setElections([]));
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Failed to load elections."));
   }, []);
 
   useEffect(() => {
@@ -40,13 +42,15 @@ export default function ElectionsPage() {
         }
       />
 
-      {elections === null && <p className="py-10 text-sm text-ink-faint">Loading...</p>}
+      {error && <p className="py-10 text-sm text-danger">{error}</p>}
 
-      {elections !== null && elections.length === 0 && (
+      {!error && elections === null && <p className="py-10 text-sm text-ink-faint">Loading...</p>}
+
+      {!error && elections !== null && elections.length === 0 && (
         <p className="py-10 text-sm text-ink-faint">No elections yet.</p>
       )}
 
-      {elections !== null && elections.length > 0 && (
+      {!error && elections !== null && elections.length > 0 && (
         <ul className="divide-y divide-line border-t border-line">
           {elections.map((election) => (
             <ElectionRow key={election.id} election={election} />

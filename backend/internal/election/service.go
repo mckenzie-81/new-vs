@@ -40,7 +40,7 @@ type Election struct {
 	CreatedBy            string            `json:"createdBy"`
 	ApprovedBy           *string           `json:"approvedBy"`
 	RejectionReason      *string           `json:"rejectionReason"`
-	ElectorateDatabaseID string            `json:"electorateDatabaseId"`
+	ElectorateDatabaseID *string           `json:"electorateDatabaseId"`
 	ElectorateFilter     map[string]string `json:"electorateFilter"`
 	CreatedAt            time.Time         `json:"createdAt"`
 	UpdatedAt            time.Time         `json:"updatedAt"`
@@ -55,26 +55,33 @@ type CreateInput struct {
 	ElectorateFilter     map[string]string
 }
 
-func (s *Service) validateElectionInput(ctx context.Context, in CreateInput) (string, *string, map[string]string, error) {
+// validateElectionInput checks the fields every election needs regardless
+// of lifecycle stage. The electorate link is deliberately not one of them -
+// a draft can exist without a database attached yet, since that's meant to
+// be addable later while managing the draft. It's only required before
+// submitting for approval (see SubmitForApproval).
+func (s *Service) validateElectionInput(ctx context.Context, in CreateInput) (string, *string, *string, map[string]string, error) {
 	title := strings.TrimSpace(in.Title)
 	if title == "" {
-		return "", nil, nil, fmt.Errorf("%w: title is required", ErrInvalidInput)
+		return "", nil, nil, nil, fmt.Errorf("%w: title is required", ErrInvalidInput)
 	}
 	if len(title) > maxTitleLength {
-		return "", nil, nil, fmt.Errorf("%w: title must be %d characters or fewer", ErrInvalidInput, maxTitleLength)
+		return "", nil, nil, nil, fmt.Errorf("%w: title must be %d characters or fewer", ErrInvalidInput, maxTitleLength)
 	}
 	if !in.EndTime.After(in.StartTime) {
-		return "", nil, nil, fmt.Errorf("%w: end time must be after start time", ErrInvalidInput)
+		return "", nil, nil, nil, fmt.Errorf("%w: end time must be after start time", ErrInvalidInput)
 	}
-	if strings.TrimSpace(in.ElectorateDatabaseID) == "" {
-		return "", nil, nil, fmt.Errorf("%w: an electorate database is required", ErrInvalidInput)
-	}
-	exists, err := s.electorate.DatabaseExists(ctx, in.ElectorateDatabaseID)
-	if err != nil {
-		return "", nil, nil, fmt.Errorf("checking electorate database: %w", err)
-	}
-	if !exists {
-		return "", nil, nil, ErrElectorateNotFound
+
+	var electorateDatabaseID *string
+	if trimmed := strings.TrimSpace(in.ElectorateDatabaseID); trimmed != "" {
+		exists, err := s.electorate.DatabaseExists(ctx, trimmed)
+		if err != nil {
+			return "", nil, nil, nil, fmt.Errorf("checking electorate database: %w", err)
+		}
+		if !exists {
+			return "", nil, nil, nil, ErrElectorateNotFound
+		}
+		electorateDatabaseID = &trimmed
 	}
 
 	var description *string
@@ -87,11 +94,11 @@ func (s *Service) validateElectionInput(ctx context.Context, in CreateInput) (st
 		filter = map[string]string{}
 	}
 
-	return title, description, filter, nil
+	return title, description, electorateDatabaseID, filter, nil
 }
 
 func (s *Service) Create(ctx context.Context, actorID string, in CreateInput) (*Election, error) {
-	title, description, filter, err := s.validateElectionInput(ctx, in)
+	title, description, electorateDatabaseID, filter, err := s.validateElectionInput(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -101,8 +108,8 @@ func (s *Service) Create(ctx context.Context, actorID string, in CreateInput) (*
 		INSERT INTO elections (title, description, start_time, end_time, created_by, electorate_database_id, electorate_filter)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id, title, description, status, start_time, end_time, created_by, approved_by, rejection_reason,
-			electorate_database_id, electorate_filter, created_at, updated_at
-	`, title, description, in.StartTime, in.EndTime, actorID, in.ElectorateDatabaseID, filter).Scan(
+			electorate_database_id, COALESCE(electorate_filter, '{}'::jsonb), created_at, updated_at
+	`, title, description, in.StartTime, in.EndTime, actorID, electorateDatabaseID, filter).Scan(
 		&e.ID, &e.Title, &e.Description, &e.Status, &e.StartTime, &e.EndTime,
 		&e.CreatedBy, &e.ApprovedBy, &e.RejectionReason,
 		&e.ElectorateDatabaseID, &e.ElectorateFilter, &e.CreatedAt, &e.UpdatedAt,
@@ -126,7 +133,7 @@ func (s *Service) Update(ctx context.Context, electionID string, in CreateInput)
 		return nil, ErrElectionNotDraft
 	}
 
-	title, description, filter, err := s.validateElectionInput(ctx, in)
+	title, description, electorateDatabaseID, filter, err := s.validateElectionInput(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -138,8 +145,8 @@ func (s *Service) Update(ctx context.Context, electionID string, in CreateInput)
 			electorate_database_id = $5, electorate_filter = $6, updated_at = now()
 		WHERE id = $7
 		RETURNING id, title, description, status, start_time, end_time, created_by, approved_by, rejection_reason,
-			electorate_database_id, electorate_filter, created_at, updated_at
-	`, title, description, in.StartTime, in.EndTime, in.ElectorateDatabaseID, filter, electionID).Scan(
+			electorate_database_id, COALESCE(electorate_filter, '{}'::jsonb), created_at, updated_at
+	`, title, description, in.StartTime, in.EndTime, electorateDatabaseID, filter, electionID).Scan(
 		&updated.ID, &updated.Title, &updated.Description, &updated.Status, &updated.StartTime, &updated.EndTime,
 		&updated.CreatedBy, &updated.ApprovedBy, &updated.RejectionReason,
 		&updated.ElectorateDatabaseID, &updated.ElectorateFilter, &updated.CreatedAt, &updated.UpdatedAt,
@@ -157,7 +164,7 @@ func (s *Service) Update(ctx context.Context, electionID string, in CreateInput)
 func (s *Service) List(ctx context.Context) ([]Election, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, title, description, status, start_time, end_time, created_by, approved_by, rejection_reason,
-			electorate_database_id, electorate_filter, created_at, updated_at
+			electorate_database_id, COALESCE(electorate_filter, '{}'::jsonb), created_at, updated_at
 		FROM elections
 		ORDER BY created_at DESC
 	`)
@@ -189,7 +196,7 @@ func (s *Service) Get(ctx context.Context, id string) (*Election, error) {
 	var e Election
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, title, description, status, start_time, end_time, created_by, approved_by, rejection_reason,
-			electorate_database_id, electorate_filter, created_at, updated_at
+			electorate_database_id, COALESCE(electorate_filter, '{}'::jsonb), created_at, updated_at
 		FROM elections
 		WHERE id = $1
 	`, id).Scan(
@@ -208,8 +215,9 @@ func (s *Service) Get(ctx context.Context, id string) (*Election, error) {
 }
 
 type ElectorateSummary struct {
-	DatabaseID    string            `json:"databaseId"`
-	DatabaseName  string            `json:"databaseName"`
+	Linked        bool              `json:"linked"`
+	DatabaseID    *string           `json:"databaseId"`
+	DatabaseName  *string           `json:"databaseName"`
 	Filter        map[string]string `json:"filter"`
 	EligibleCount int               `json:"eligibleCount"`
 }
@@ -220,19 +228,24 @@ func (s *Service) GetElectorateSummary(ctx context.Context, electionID string) (
 		return nil, err
 	}
 
-	db, err := s.electorate.GetDatabase(ctx, e.ElectorateDatabaseID)
+	if e.ElectorateDatabaseID == nil {
+		return &ElectorateSummary{Linked: false, Filter: map[string]string{}}, nil
+	}
+
+	db, err := s.electorate.GetDatabase(ctx, *e.ElectorateDatabaseID)
 	if err != nil {
 		return nil, fmt.Errorf("looking up electorate database: %w", err)
 	}
 
-	count, err := s.electorate.CountEligible(ctx, e.ElectorateDatabaseID, e.ElectorateFilter)
+	count, err := s.electorate.CountEligible(ctx, *e.ElectorateDatabaseID, e.ElectorateFilter)
 	if err != nil {
 		return nil, fmt.Errorf("counting eligible voters: %w", err)
 	}
 
 	return &ElectorateSummary{
-		DatabaseID:    db.ID,
-		DatabaseName:  db.Name,
+		Linked:        true,
+		DatabaseID:    &db.ID,
+		DatabaseName:  &db.Name,
 		Filter:        e.ElectorateFilter,
 		EligibleCount: count,
 	}, nil
