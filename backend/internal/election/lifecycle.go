@@ -4,12 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 )
 
+const maxRejectionReasonLength = 1000
+
 var (
-	ErrEmptyBallot       = errors.New("add at least one portfolio with a candidate before submitting for approval")
-	ErrPortfolioEmpty    = errors.New("every portfolio needs at least one candidate before submitting for approval")
-	ErrElectionNotClosed = errors.New("only a closed election can be archived")
+	ErrEmptyBallot        = errors.New("add at least one portfolio with a candidate before submitting for approval")
+	ErrPortfolioEmpty     = errors.New("every portfolio needs at least one candidate before submitting for approval")
+	ErrElectionNotClosed  = errors.New("only a closed election can be archived")
+	ErrNotPendingApproval = errors.New("only an election awaiting approval can be approved or rejected")
 )
 
 // SubmitForApproval moves a draft to PENDING_APPROVAL. It refuses an empty
@@ -39,9 +43,61 @@ func (s *Service) SubmitForApproval(ctx context.Context, electionID string) (*El
 	}
 
 	if _, err := s.pool.Exec(ctx, `
-		UPDATE elections SET status = 'PENDING_APPROVAL', updated_at = now() WHERE id = $1
+		UPDATE elections SET status = 'PENDING_APPROVAL', rejection_reason = NULL, updated_at = now() WHERE id = $1
 	`, electionID); err != nil {
 		return nil, fmt.Errorf("submitting election: %w", err)
+	}
+
+	return s.Get(ctx, electionID)
+}
+
+// Approve signs off on an election awaiting review. Any active approver can
+// call this for any pending election - there's no per-election approver
+// assignment, unlike admin assignment.
+func (s *Service) Approve(ctx context.Context, electionID, approverID string) (*Election, error) {
+	e, err := s.Get(ctx, electionID)
+	if err != nil {
+		return nil, err
+	}
+	if e.Status != "PENDING_APPROVAL" {
+		return nil, ErrNotPendingApproval
+	}
+
+	if _, err := s.pool.Exec(ctx, `
+		UPDATE elections SET status = 'APPROVED', approved_by = $2, rejection_reason = NULL, updated_at = now()
+		WHERE id = $1
+	`, electionID, approverID); err != nil {
+		return nil, fmt.Errorf("approving election: %w", err)
+	}
+
+	return s.Get(ctx, electionID)
+}
+
+// Reject sends an election back to DRAFT with a required reason, stored on
+// the row itself (not just the audit log) so the creator actually sees why
+// without needing email, which this system doesn't send yet anyway.
+func (s *Service) Reject(ctx context.Context, electionID, reason string) (*Election, error) {
+	e, err := s.Get(ctx, electionID)
+	if err != nil {
+		return nil, err
+	}
+	if e.Status != "PENDING_APPROVAL" {
+		return nil, ErrNotPendingApproval
+	}
+
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return nil, fmt.Errorf("%w: a reason is required", ErrInvalidInput)
+	}
+	if len(reason) > maxRejectionReasonLength {
+		return nil, fmt.Errorf("%w: reason must be %d characters or fewer", ErrInvalidInput, maxRejectionReasonLength)
+	}
+
+	if _, err := s.pool.Exec(ctx, `
+		UPDATE elections SET status = 'DRAFT', approved_by = NULL, rejection_reason = $2, updated_at = now()
+		WHERE id = $1
+	`, electionID, reason); err != nil {
+		return nil, fmt.Errorf("rejecting election: %w", err)
 	}
 
 	return s.Get(ctx, electionID)

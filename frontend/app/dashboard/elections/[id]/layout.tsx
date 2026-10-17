@@ -7,6 +7,7 @@ import {
   getElection,
   listAssignedAdmins,
   submitForApproval,
+  approveElection,
   deleteElection,
   archiveElection,
   ApiError,
@@ -20,6 +21,8 @@ import { Breadcrumbs } from "@/components/dashboard/breadcrumbs";
 import { Badge } from "@/components/dashboard/badge";
 import { Button, SecondaryButton } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Modal } from "@/components/ui/modal";
+import { RejectElectionForm } from "@/components/dashboard/reject-election-form";
 
 function formatRange(startTime: string, endTime: string) {
   const opts: Intl.DateTimeFormatOptions = {
@@ -50,6 +53,8 @@ export default function ElectionLayout({ children }: { children: React.ReactNode
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [confirmApproveOpen, setConfirmApproveOpen] = useState(false);
+  const [rejectOpen, setRejectOpen] = useState(false);
 
   const refresh = useCallback(() => {
     getElection(id)
@@ -90,6 +95,20 @@ export default function ElectionLayout({ children }: { children: React.ReactNode
     }
   }
 
+  async function handleApprove() {
+    setActionError(null);
+    setBusy(true);
+    try {
+      const updated = await approveElection(id);
+      setElection(updated);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Failed to approve.");
+    } finally {
+      setBusy(false);
+      setConfirmApproveOpen(false);
+    }
+  }
+
   async function handleArchive() {
     setActionError(null);
     setBusy(true);
@@ -113,6 +132,7 @@ export default function ElectionLayout({ children }: { children: React.ReactNode
 
   const base = `/dashboard/elections/${id}`;
   const isSystemadmin = user.role === "SYSTEMADMIN";
+  const isApprover = user.role === "APPROVER";
 
   return (
     <div>
@@ -123,6 +143,13 @@ export default function ElectionLayout({ children }: { children: React.ReactNode
           { label: election.title },
         ]}
       />
+
+      {election.status === "DRAFT" && election.rejectionReason && (
+        <div className="mb-6 border-l-2 border-danger bg-page py-3 pl-4">
+          <p className="text-sm font-semibold text-danger">Rejected</p>
+          <p className="mt-1 text-sm text-ink-muted">{election.rejectionReason}</p>
+        </div>
+      )}
 
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -162,6 +189,17 @@ export default function ElectionLayout({ children }: { children: React.ReactNode
             )}
           </div>
         )}
+
+        {isApprover && election.status === "PENDING_APPROVAL" && (
+          <div className="flex flex-wrap gap-3">
+            <SecondaryButton onClick={() => setRejectOpen(true)} disabled={busy} tone="danger">
+              Reject
+            </SecondaryButton>
+            <Button variant="accent" onClick={() => setConfirmApproveOpen(true)} disabled={busy} fullWidth={false}>
+              Approve
+            </Button>
+          </div>
+        )}
       </div>
 
       {actionError && <p className="mb-6 text-sm text-danger">{actionError}</p>}
@@ -196,6 +234,28 @@ export default function ElectionLayout({ children }: { children: React.ReactNode
         onConfirm={handleDelete}
         onCancel={() => setConfirmDeleteOpen(false)}
       />
+
+      <ConfirmDialog
+        open={confirmApproveOpen}
+        title="Approve this election?"
+        description={`"${election.title}" will move to approved and can go live at its scheduled start time.`}
+        confirmLabel="Approve"
+        busy={busy}
+        onConfirm={handleApprove}
+        onCancel={() => setConfirmApproveOpen(false)}
+      />
+
+      {rejectOpen && (
+        <Modal title="Reject this election" onClose={() => setRejectOpen(false)}>
+          <RejectElectionForm
+            electionId={id}
+            onRejected={() => {
+              setRejectOpen(false);
+              refresh();
+            }}
+          />
+        </Modal>
+      )}
     </div>
   );
 }

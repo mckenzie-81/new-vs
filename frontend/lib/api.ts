@@ -142,6 +142,8 @@ export interface Election {
   startTime: string;
   endTime: string;
   createdBy: string;
+  approvedBy: string | null;
+  rejectionReason: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -322,6 +324,20 @@ export async function unassignAdmin(electionId: string, userId: string): Promise
 
 export async function submitForApproval(electionId: string): Promise<Election> {
   const response = await apiFetch(`/api/elections/${electionId}/submit`, { method: "POST" });
+  return response.json();
+}
+
+export async function approveElection(electionId: string): Promise<Election> {
+  const response = await apiFetch(`/api/elections/${electionId}/approve`, { method: "POST" });
+  return response.json();
+}
+
+export async function rejectElection(electionId: string, reason: string): Promise<Election> {
+  const response = await apiFetch(`/api/elections/${electionId}/reject`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
   return response.json();
 }
 

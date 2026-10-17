@@ -27,15 +27,17 @@ func NewService(pool *pgxpool.Pool) *Service {
 }
 
 type Election struct {
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	Description *string   `json:"description"`
-	Status      string    `json:"status"`
-	StartTime   time.Time `json:"startTime"`
-	EndTime     time.Time `json:"endTime"`
-	CreatedBy   string    `json:"createdBy"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID              string    `json:"id"`
+	Title           string    `json:"title"`
+	Description     *string   `json:"description"`
+	Status          string    `json:"status"`
+	StartTime       time.Time `json:"startTime"`
+	EndTime         time.Time `json:"endTime"`
+	CreatedBy       string    `json:"createdBy"`
+	ApprovedBy      *string   `json:"approvedBy"`
+	RejectionReason *string   `json:"rejectionReason"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
 }
 
 type CreateInput struct {
@@ -66,10 +68,10 @@ func (s *Service) Create(ctx context.Context, actorID string, in CreateInput) (*
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO elections (title, description, start_time, end_time, created_by)
 		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, title, description, status, start_time, end_time, created_by, created_at, updated_at
+		RETURNING id, title, description, status, start_time, end_time, created_by, approved_by, rejection_reason, created_at, updated_at
 	`, title, description, in.StartTime, in.EndTime, actorID).Scan(
 		&e.ID, &e.Title, &e.Description, &e.Status, &e.StartTime, &e.EndTime,
-		&e.CreatedBy, &e.CreatedAt, &e.UpdatedAt,
+		&e.CreatedBy, &e.ApprovedBy, &e.RejectionReason, &e.CreatedAt, &e.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating election: %w", err)
@@ -83,7 +85,7 @@ func (s *Service) Create(ctx context.Context, actorID string, in CreateInput) (*
 // exists. For now, anyone with a dashboard account can see the full list.
 func (s *Service) List(ctx context.Context) ([]Election, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, title, description, status, start_time, end_time, created_by, created_at, updated_at
+		SELECT id, title, description, status, start_time, end_time, created_by, approved_by, rejection_reason, created_at, updated_at
 		FROM elections
 		ORDER BY created_at DESC
 	`)
@@ -97,7 +99,7 @@ func (s *Service) List(ctx context.Context) ([]Election, error) {
 		var e Election
 		if err := rows.Scan(
 			&e.ID, &e.Title, &e.Description, &e.Status, &e.StartTime, &e.EndTime,
-			&e.CreatedBy, &e.CreatedAt, &e.UpdatedAt,
+			&e.CreatedBy, &e.ApprovedBy, &e.RejectionReason, &e.CreatedAt, &e.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scanning election: %w", err)
 		}
@@ -113,12 +115,12 @@ func (s *Service) List(ctx context.Context) ([]Election, error) {
 func (s *Service) Get(ctx context.Context, id string) (*Election, error) {
 	var e Election
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, title, description, status, start_time, end_time, created_by, created_at, updated_at
+		SELECT id, title, description, status, start_time, end_time, created_by, approved_by, rejection_reason, created_at, updated_at
 		FROM elections
 		WHERE id = $1
 	`, id).Scan(
 		&e.ID, &e.Title, &e.Description, &e.Status, &e.StartTime, &e.EndTime,
-		&e.CreatedBy, &e.CreatedAt, &e.UpdatedAt,
+		&e.CreatedBy, &e.ApprovedBy, &e.RejectionReason, &e.CreatedAt, &e.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound

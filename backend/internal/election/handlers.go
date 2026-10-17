@@ -43,6 +43,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/elections/{electionId}/admins", h.assignAdmin)
 	mux.HandleFunc("DELETE /api/elections/{electionId}/admins/{userId}", h.unassignAdmin)
 	mux.HandleFunc("POST /api/elections/{id}/submit", h.submitForApproval)
+	mux.HandleFunc("POST /api/elections/{id}/approve", h.approveElection)
+	mux.HandleFunc("POST /api/elections/{id}/reject", h.rejectElection)
 	mux.HandleFunc("DELETE /api/elections/{id}", h.deleteElection)
 	mux.HandleFunc("POST /api/elections/{id}/archive", h.archiveElection)
 }
@@ -656,6 +658,97 @@ func (h *Handler) submitForApproval(w http.ResponseWriter, r *http.Request) {
 	default:
 		log.Printf("submitting election failed: %v", err)
 		httpx.Error(w, http.StatusInternalServerError, "failed to submit election")
+	}
+}
+
+func (h *Handler) approveElection(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.authService.Authorize(w, r, "APPROVER")
+	if err != nil {
+		if errors.Is(err, auth.ErrForbidden) {
+			httpx.Error(w, http.StatusForbidden, "only an approver can approve an election")
+		} else {
+			httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+		}
+		return
+	}
+
+	electionID := r.PathValue("id")
+	result, err := h.service.Approve(r.Context(), electionID, actor.ID)
+
+	switch {
+	case err == nil:
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &actor.ID,
+			Action:      "ELECTION_APPROVED",
+			Metadata:    map[string]any{"election_id": electionID, "title": result.Title},
+			IPAddress:   httpx.ClientIP(r),
+			UserAgent:   r.Header.Get("User-Agent"),
+		})
+		httpx.JSON(w, http.StatusOK, result)
+
+	case errors.Is(err, ErrNotFound):
+		httpx.Error(w, http.StatusNotFound, "no such election")
+
+	case errors.Is(err, ErrNotPendingApproval):
+		httpx.Error(w, http.StatusConflict, err.Error())
+
+	default:
+		log.Printf("approving election failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to approve election")
+	}
+}
+
+type rejectRequest struct {
+	Reason string `json:"reason"`
+}
+
+func (h *Handler) rejectElection(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.authService.Authorize(w, r, "APPROVER")
+	if err != nil {
+		if errors.Is(err, auth.ErrForbidden) {
+			httpx.Error(w, http.StatusForbidden, "only an approver can reject an election")
+		} else {
+			httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+		}
+		return
+	}
+
+	var req rejectRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	electionID := r.PathValue("id")
+	result, err := h.service.Reject(r.Context(), electionID, req.Reason)
+
+	switch {
+	case err == nil:
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &actor.ID,
+			Action:      "ELECTION_REJECTED",
+			Metadata: map[string]any{
+				"election_id": electionID,
+				"title":       result.Title,
+				"reason":      req.Reason,
+			},
+			IPAddress: httpx.ClientIP(r),
+			UserAgent: r.Header.Get("User-Agent"),
+		})
+		httpx.JSON(w, http.StatusOK, result)
+
+	case errors.Is(err, ErrNotFound):
+		httpx.Error(w, http.StatusNotFound, "no such election")
+
+	case errors.Is(err, ErrNotPendingApproval):
+		httpx.Error(w, http.StatusConflict, err.Error())
+
+	case errors.Is(err, ErrInvalidInput):
+		httpx.Error(w, http.StatusBadRequest, err.Error())
+
+	default:
+		log.Printf("rejecting election failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to reject election")
 	}
 }
 

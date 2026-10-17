@@ -50,10 +50,18 @@ export function CandidateForm({
         />
       </Field>
 
+      {/*
+        TEMPORARY: this should be a device file-picker upload, not a pasted
+        URL - confirmed explicitly, not just left this way by default. It's
+        a URL field only because the storage mechanism (Cloudinary vs. our
+        own backend) isn't decided yet. The `photoUrl` string this produces
+        is the real data model either way, so swapping this input for a
+        real upload widget later won't need backend changes.
+      */}
       <Field
         label="Photo URL"
         htmlFor="candidate-photo"
-        hint="Paste a link to an image. Optional."
+        hint="Paste a link to an image. Optional. (Placeholder - will become a file upload.)"
       >
         <Input
           id="candidate-photo"
