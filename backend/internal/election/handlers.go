@@ -101,12 +101,13 @@ func WriteBallotAuthError(w http.ResponseWriter, err error) {
 }
 
 type createRequest struct {
-	Title                string            `json:"title"`
-	Description          string            `json:"description"`
-	StartTime            string            `json:"startTime"`
-	EndTime              string            `json:"endTime"`
-	ElectorateDatabaseID string            `json:"electorateDatabaseId"`
-	ElectorateFilter     map[string]string `json:"electorateFilter"`
+	Title                    string            `json:"title"`
+	Description              string            `json:"description"`
+	StartTime                string            `json:"startTime"`
+	EndTime                  string            `json:"endTime"`
+	ElectorateDatabaseID     string            `json:"electorateDatabaseId"`
+	ElectorateFilter         map[string]string `json:"electorateFilter"`
+	VoterVerificationColumns []string          `json:"voterVerificationColumns"`
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -141,12 +142,13 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	userAgent := r.Header.Get("User-Agent")
 
 	result, err := h.service.Create(r.Context(), actor.ID, CreateInput{
-		Title:                req.Title,
-		Description:          req.Description,
-		StartTime:            startTime,
-		EndTime:              endTime,
-		ElectorateDatabaseID: req.ElectorateDatabaseID,
-		ElectorateFilter:     req.ElectorateFilter,
+		Title:                    req.Title,
+		Description:              req.Description,
+		StartTime:                startTime,
+		EndTime:                  endTime,
+		ElectorateDatabaseID:     req.ElectorateDatabaseID,
+		ElectorateFilter:         req.ElectorateFilter,
+		VoterVerificationColumns: req.VoterVerificationColumns,
 	})
 
 	switch {
@@ -201,12 +203,13 @@ func (h *Handler) updateElection(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.service.Update(r.Context(), electionID, CreateInput{
-		Title:                req.Title,
-		Description:          req.Description,
-		StartTime:            startTime,
-		EndTime:              endTime,
-		ElectorateDatabaseID: req.ElectorateDatabaseID,
-		ElectorateFilter:     req.ElectorateFilter,
+		Title:                    req.Title,
+		Description:              req.Description,
+		StartTime:                startTime,
+		EndTime:                  endTime,
+		ElectorateDatabaseID:     req.ElectorateDatabaseID,
+		ElectorateFilter:         req.ElectorateFilter,
+		VoterVerificationColumns: req.VoterVerificationColumns,
 	})
 
 	switch {
