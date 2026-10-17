@@ -31,6 +31,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/elections", h.create)
 	mux.HandleFunc("GET /api/elections", h.list)
 	mux.HandleFunc("GET /api/elections/{id}", h.get)
+	mux.HandleFunc("PUT /api/elections/{id}", h.updateElection)
 	mux.HandleFunc("GET /api/elections/{electionId}/portfolios", h.listPortfolios)
 	mux.HandleFunc("POST /api/elections/{electionId}/portfolios", h.createPortfolio)
 	mux.HandleFunc("PUT /api/elections/{electionId}/portfolios/order", h.reorderPortfolios)
@@ -149,6 +150,67 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	default:
 		log.Printf("election creation failed: %v", err)
 		httpx.Error(w, http.StatusInternalServerError, "failed to create election")
+	}
+}
+
+func (h *Handler) updateElection(w http.ResponseWriter, r *http.Request) {
+	electionID := r.PathValue("id")
+	actor, err := h.authorizeBallotEditor(w, r, electionID)
+	if err != nil {
+		writeBallotAuthError(w, err)
+		return
+	}
+
+	var req createRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	startTime, err := time.Parse(time.RFC3339, req.StartTime)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "start time is invalid")
+		return
+	}
+	endTime, err := time.Parse(time.RFC3339, req.EndTime)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "end time is invalid")
+		return
+	}
+
+	result, err := h.service.Update(r.Context(), electionID, CreateInput{
+		Title:       req.Title,
+		Description: req.Description,
+		StartTime:   startTime,
+		EndTime:     endTime,
+	})
+
+	switch {
+	case err == nil:
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &actor.ID,
+			Action:      "ELECTION_UPDATED",
+			Metadata: map[string]any{
+				"election_id": result.ID,
+				"title":       result.Title,
+			},
+			IPAddress: httpx.ClientIP(r),
+			UserAgent: r.Header.Get("User-Agent"),
+		})
+		httpx.JSON(w, http.StatusOK, result)
+
+	case errors.Is(err, ErrNotFound):
+		httpx.Error(w, http.StatusNotFound, "no such election")
+
+	case errors.Is(err, ErrElectionNotDraft):
+		httpx.Error(w, http.StatusConflict, err.Error())
+
+	case errors.Is(err, ErrInvalidInput):
+		httpx.Error(w, http.StatusBadRequest, err.Error())
+
+	default:
+		log.Printf("election update failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to update election")
 	}
 }
 

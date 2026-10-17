@@ -164,6 +164,18 @@ export async function createElection(input: CreateElectionInput): Promise<Electi
   return response.json();
 }
 
+export async function updateElection(
+  electionId: string,
+  input: CreateElectionInput
+): Promise<Election> {
+  const response = await apiFetch(`/api/elections/${electionId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return response.json();
+}
+
 export async function listElections(): Promise<Election[]> {
   const response = await apiFetch("/api/elections");
   return response.json();

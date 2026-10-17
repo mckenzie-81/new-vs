@@ -47,16 +47,16 @@ type CreateInput struct {
 	EndTime     time.Time
 }
 
-func (s *Service) Create(ctx context.Context, actorID string, in CreateInput) (*Election, error) {
+func validateElectionInput(in CreateInput) (string, *string, error) {
 	title := strings.TrimSpace(in.Title)
 	if title == "" {
-		return nil, fmt.Errorf("%w: title is required", ErrInvalidInput)
+		return "", nil, fmt.Errorf("%w: title is required", ErrInvalidInput)
 	}
 	if len(title) > maxTitleLength {
-		return nil, fmt.Errorf("%w: title must be %d characters or fewer", ErrInvalidInput, maxTitleLength)
+		return "", nil, fmt.Errorf("%w: title must be %d characters or fewer", ErrInvalidInput, maxTitleLength)
 	}
 	if !in.EndTime.After(in.StartTime) {
-		return nil, fmt.Errorf("%w: end time must be after start time", ErrInvalidInput)
+		return "", nil, fmt.Errorf("%w: end time must be after start time", ErrInvalidInput)
 	}
 
 	var description *string
@@ -64,8 +64,17 @@ func (s *Service) Create(ctx context.Context, actorID string, in CreateInput) (*
 		description = &trimmed
 	}
 
+	return title, description, nil
+}
+
+func (s *Service) Create(ctx context.Context, actorID string, in CreateInput) (*Election, error) {
+	title, description, err := validateElectionInput(in)
+	if err != nil {
+		return nil, err
+	}
+
 	var e Election
-	err := s.pool.QueryRow(ctx, `
+	err = s.pool.QueryRow(ctx, `
 		INSERT INTO elections (title, description, start_time, end_time, created_by)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, title, description, status, start_time, end_time, created_by, approved_by, rejection_reason, created_at, updated_at
@@ -78,6 +87,40 @@ func (s *Service) Create(ctx context.Context, actorID string, in CreateInput) (*
 	}
 
 	return &e, nil
+}
+
+// Update changes an election's own details - title, description, and
+// schedule. Like every other ballot-adjacent edit, this only works while
+// the election is still a draft.
+func (s *Service) Update(ctx context.Context, electionID string, in CreateInput) (*Election, error) {
+	e, err := s.Get(ctx, electionID)
+	if err != nil {
+		return nil, err
+	}
+	if e.Status != "DRAFT" {
+		return nil, ErrElectionNotDraft
+	}
+
+	title, description, err := validateElectionInput(in)
+	if err != nil {
+		return nil, err
+	}
+
+	var updated Election
+	err = s.pool.QueryRow(ctx, `
+		UPDATE elections
+		SET title = $1, description = $2, start_time = $3, end_time = $4, updated_at = now()
+		WHERE id = $5
+		RETURNING id, title, description, status, start_time, end_time, created_by, approved_by, rejection_reason, created_at, updated_at
+	`, title, description, in.StartTime, in.EndTime, electionID).Scan(
+		&updated.ID, &updated.Title, &updated.Description, &updated.Status, &updated.StartTime, &updated.EndTime,
+		&updated.CreatedBy, &updated.ApprovedBy, &updated.RejectionReason, &updated.CreatedAt, &updated.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("updating election: %w", err)
+	}
+
+	return &updated, nil
 }
 
 // List returns every election, newest first. No filtering by who's

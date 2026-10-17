@@ -14,7 +14,7 @@ import {
   Election,
   AdminAssignment,
 } from "@/lib/api";
-import { TrashIcon } from "@heroicons/react/24/outline";
+import { TrashIcon, PencilIcon } from "@heroicons/react/24/outline";
 import { useDashboardUser } from "@/components/dashboard/user-context";
 import { ElectionProvider } from "@/components/dashboard/election-context";
 import { Breadcrumbs } from "@/components/dashboard/breadcrumbs";
@@ -23,6 +23,8 @@ import { Button, SecondaryButton } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Modal } from "@/components/ui/modal";
 import { RejectElectionForm } from "@/components/dashboard/reject-election-form";
+import { SubmitPreviewModal } from "@/components/dashboard/submit-preview-modal";
+import { ElectionForm } from "@/components/dashboard/election-form";
 
 function formatRange(startTime: string, endTime: string) {
   const opts: Intl.DateTimeFormatOptions = {
@@ -55,6 +57,8 @@ export default function ElectionLayout({ children }: { children: React.ReactNode
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [confirmApproveOpen, setConfirmApproveOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [submitPreviewOpen, setSubmitPreviewOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   const refresh = useCallback(() => {
     getElection(id)
@@ -75,6 +79,7 @@ export default function ElectionLayout({ children }: { children: React.ReactNode
     try {
       const updated = await submitForApproval(id);
       setElection(updated);
+      setSubmitPreviewOpen(false);
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Failed to submit.");
     } finally {
@@ -161,15 +166,23 @@ export default function ElectionLayout({ children }: { children: React.ReactNode
             <Badge status={election.status} />
           </div>
           {election.description && (
-            <p className="mt-2 max-w-2xl text-sm text-ink-muted">{election.description}</p>
+            <p className="mt-2 max-w-2xl text-base text-ink-muted">{election.description}</p>
           )}
-          <p className="mt-1 text-sm text-ink-faint">
+          <p className="mt-1 text-sm font-medium text-ink-muted">
             {formatRange(election.startTime, election.endTime)}
           </p>
         </div>
 
         {election.status === "DRAFT" && canSubmit && (
           <div className="flex flex-wrap gap-3">
+            <button
+              aria-label="Edit election"
+              onClick={() => setEditOpen(true)}
+              disabled={busy}
+              className="p-2.5 text-ink-faint hover:text-ink disabled:opacity-60"
+            >
+              <PencilIcon className="h-5 w-5" />
+            </button>
             {isSystemadmin && (
               <button
                 aria-label="Delete election"
@@ -181,7 +194,12 @@ export default function ElectionLayout({ children }: { children: React.ReactNode
               </button>
             )}
             {canSubmit && (
-              <Button variant="accent" onClick={handleSubmit} disabled={busy} fullWidth={false}>
+              <Button
+                variant="accent"
+                onClick={() => setSubmitPreviewOpen(true)}
+                disabled={busy}
+                fullWidth={false}
+              >
                 Submit for approval
               </Button>
             )}
@@ -255,6 +273,28 @@ export default function ElectionLayout({ children }: { children: React.ReactNode
             electionId={id}
             onRejected={() => {
               setRejectOpen(false);
+              refresh();
+            }}
+          />
+        </Modal>
+      )}
+
+      {submitPreviewOpen && (
+        <SubmitPreviewModal
+          election={election}
+          busy={busy}
+          error={actionError}
+          onClose={() => setSubmitPreviewOpen(false)}
+          onConfirm={handleSubmit}
+        />
+      )}
+
+      {editOpen && (
+        <Modal title="Edit election" onClose={() => setEditOpen(false)}>
+          <ElectionForm
+            election={election}
+            onSaved={() => {
+              setEditOpen(false);
               refresh();
             }}
           />

@@ -57,7 +57,7 @@ export default function ElectionsPage() {
       {createOpen && (
         <Modal title="Create an election" onClose={() => setCreateOpen(false)}>
           <ElectionForm
-            onCreated={() => {
+            onSaved={() => {
               setCreateOpen(false);
               refresh();
             }}

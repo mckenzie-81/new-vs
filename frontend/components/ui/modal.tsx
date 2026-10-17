@@ -1,12 +1,19 @@
 "use client";
 
+const widthClasses = {
+  sm: "max-w-sm",
+  lg: "max-w-2xl",
+};
+
 export function Modal({
   title,
   onClose,
+  size = "sm",
   children,
 }: {
   title: string;
   onClose: () => void;
+  size?: "sm" | "lg";
   children: React.ReactNode;
 }) {
   return (
@@ -16,7 +23,7 @@ export function Modal({
         className="absolute inset-0 bg-black/30"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-sm border border-line bg-surface p-6">
+      <div className={`relative w-full ${widthClasses[size]} border border-line bg-surface p-6`}>
         <div className="mb-5 flex items-center justify-between gap-4">
           <h2 className="text-base font-semibold text-ink">{title}</h2>
           <button

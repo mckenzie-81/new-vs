@@ -16,18 +16,31 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { SortableItem } from "./sortable-item";
 import { CandidateForm } from "./candidate-form";
 
-function CandidateThumbnail({ candidate }: { candidate: Candidate }) {
+type CardSize = "compact" | "comfortable";
+
+const thumbnailClasses: Record<CardSize, string> = {
+  compact: "h-8 w-8 text-xs",
+  comfortable: "h-12 w-12 text-base",
+};
+
+function CandidateThumbnail({ candidate, size }: { candidate: Candidate; size: CardSize }) {
   if (candidate.photoUrl) {
     return (
       // next/image needs a fixed set of allowed hosts; the host here isn't
       // decided yet (Cloudinary vs. our own backend), so a plain img tag
       // avoids hardcoding one prematurely.
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={candidate.photoUrl} alt="" className="h-8 w-8 shrink-0 bg-page object-cover" />
+      <img
+        src={candidate.photoUrl}
+        alt=""
+        className={`shrink-0 bg-page object-cover ${thumbnailClasses[size]}`}
+      />
     );
   }
   return (
-    <div className="flex h-8 w-8 shrink-0 items-center justify-center bg-page text-xs font-semibold text-ink-faint">
+    <div
+      className={`flex shrink-0 items-center justify-center bg-page font-semibold text-ink-faint ${thumbnailClasses[size]}`}
+    >
       {candidate.fullName.trim().charAt(0).toUpperCase() || "?"}
     </div>
   );
@@ -38,11 +51,13 @@ export function PortfolioCard({
   portfolio,
   canEdit,
   onChange,
+  size = "compact",
 }: {
   electionId: string;
   portfolio: Portfolio;
   canEdit: boolean;
   onChange: () => void;
+  size?: CardSize;
 }) {
   const [addCandidateOpen, setAddCandidateOpen] = useState(false);
   const [editCandidate, setEditCandidate] = useState<Candidate | null>(null);
@@ -116,9 +131,19 @@ export function PortfolioCard({
     <div className="border-t border-line py-5 first:border-t-0">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-sm font-semibold text-ink">{portfolio.title}</h3>
+          <h3 className={size === "comfortable" ? "text-xl font-semibold text-ink" : "text-sm font-semibold text-ink"}>
+            {portfolio.title}
+          </h3>
           {portfolio.description && (
-            <p className="mt-0.5 text-sm text-ink-muted">{portfolio.description}</p>
+            <p
+              className={
+                size === "comfortable"
+                  ? "mt-1 text-base text-ink-muted"
+                  : "mt-0.5 text-sm text-ink-muted"
+              }
+            >
+              {portfolio.description}
+            </p>
           )}
         </div>
         {canEdit && (
@@ -138,13 +163,21 @@ export function PortfolioCard({
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={candidates.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-            <ul className="mt-3 flex flex-col gap-2">
+            <ul className={size === "comfortable" ? "mt-4 flex flex-col gap-3" : "mt-3 flex flex-col gap-2"}>
               {candidates.map((candidate) => (
                 <SortableItem key={candidate.id} id={candidate.id} disabled={!canEdit} as="li">
                   <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-2.5">
-                      <CandidateThumbnail candidate={candidate} />
-                      <span className="text-sm font-medium text-ink">{candidate.fullName}</span>
+                    <div className={size === "comfortable" ? "flex items-center gap-3.5" : "flex items-center gap-2.5"}>
+                      <CandidateThumbnail candidate={candidate} size={size} />
+                      <span
+                        className={
+                          size === "comfortable"
+                            ? "text-lg font-medium text-ink"
+                            : "text-sm font-medium text-ink"
+                        }
+                      >
+                        {candidate.fullName}
+                      </span>
                     </div>
                     {canEdit && (
                       <div className="flex shrink-0 items-center gap-3 text-sm">
