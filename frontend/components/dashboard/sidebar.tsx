@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import { navSections } from "./nav-items";
+import { Sheet } from "@/components/ui/sheet";
 
 function isActive(pathname: string, href: string) {
   if (href === "/dashboard") return pathname === "/dashboard";
@@ -13,10 +14,7 @@ function isActive(pathname: string, href: string) {
 
 function Brand() {
   return (
-    <div className="flex items-center gap-2.5 border-b border-line p-5">
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center bg-ink text-sm font-bold text-white">
-        V
-      </div>
+    <div className="p-5">
       <span className="text-sm font-semibold text-ink">Voting System</span>
     </div>
   );
@@ -119,21 +117,12 @@ export function MobileSidebar({
   open: boolean;
   onClose: () => void;
 }) {
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-40 md:hidden">
-      <button
-        aria-label="Close menu"
-        className="absolute inset-0 bg-black/30"
-        onClick={onClose}
-      />
-      <aside className="absolute left-0 top-0 flex h-full w-56 flex-col bg-surface">
-        <Brand />
-        <div className="flex-1 overflow-y-auto">
-          <SidebarContent role={role} onNavigate={onClose} />
-        </div>
-      </aside>
-    </div>
+    <Sheet open={open} onClose={onClose} side="left" widthClassName="w-56" className="md:hidden">
+      <Brand />
+      <div className="flex-1 overflow-y-auto">
+        <SidebarContent role={role} onNavigate={onClose} />
+      </div>
+    </Sheet>
   );
 }
