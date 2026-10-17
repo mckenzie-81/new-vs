@@ -36,6 +36,44 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/elections/{electionId}/portfolios/{portfolioId}", h.deletePortfolio)
 	mux.HandleFunc("POST /api/elections/{electionId}/portfolios/{portfolioId}/candidates", h.createCandidate)
 	mux.HandleFunc("DELETE /api/elections/{electionId}/portfolios/{portfolioId}/candidates/{candidateId}", h.deleteCandidate)
+	mux.HandleFunc("GET /api/elections/{electionId}/admins", h.listAssignedAdmins)
+	mux.HandleFunc("POST /api/elections/{electionId}/admins", h.assignAdmin)
+	mux.HandleFunc("DELETE /api/elections/{electionId}/admins/{userId}", h.unassignAdmin)
+}
+
+// authorizeBallotEditor allows a systemadmin unconditionally, or an admin
+// who is specifically assigned to this election. An approver never edits a
+// ballot - reviewing one is a different role entirely.
+func (h *Handler) authorizeBallotEditor(w http.ResponseWriter, r *http.Request, electionID string) (*auth.User, error) {
+	actor, err := h.authService.Authorize(w, r, dashboardRoles...)
+	if err != nil {
+		return nil, err
+	}
+	if actor.Role == "SYSTEMADMIN" {
+		return actor, nil
+	}
+	if actor.Role == "ADMIN" {
+		assigned, err := h.service.IsAssigned(r.Context(), electionID, actor.ID)
+		if err != nil {
+			return nil, err
+		}
+		if assigned {
+			return actor, nil
+		}
+	}
+	return nil, auth.ErrForbidden
+}
+
+func writeBallotAuthError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, auth.ErrForbidden):
+		httpx.Error(w, http.StatusForbidden, "only a systemadmin or an admin assigned to this election can edit the ballot")
+	case errors.Is(err, auth.ErrUnauthorized):
+		httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+	default:
+		log.Printf("ballot authorization check failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to authorize")
+	}
 }
 
 type createRequest struct {
@@ -162,13 +200,9 @@ type createPortfolioRequest struct {
 }
 
 func (h *Handler) createPortfolio(w http.ResponseWriter, r *http.Request) {
-	actor, err := h.authService.Authorize(w, r, "SYSTEMADMIN")
+	actor, err := h.authorizeBallotEditor(w, r, r.PathValue("electionId"))
 	if err != nil {
-		if errors.Is(err, auth.ErrForbidden) {
-			httpx.Error(w, http.StatusForbidden, "only a systemadmin can edit the ballot")
-		} else {
-			httpx.Error(w, http.StatusUnauthorized, "not authenticated")
-		}
+		writeBallotAuthError(w, err)
 		return
 	}
 
@@ -212,17 +246,13 @@ func (h *Handler) createPortfolio(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deletePortfolio(w http.ResponseWriter, r *http.Request) {
-	actor, err := h.authService.Authorize(w, r, "SYSTEMADMIN")
+	electionID := r.PathValue("electionId")
+	actor, err := h.authorizeBallotEditor(w, r, electionID)
 	if err != nil {
-		if errors.Is(err, auth.ErrForbidden) {
-			httpx.Error(w, http.StatusForbidden, "only a systemadmin can edit the ballot")
-		} else {
-			httpx.Error(w, http.StatusUnauthorized, "not authenticated")
-		}
+		writeBallotAuthError(w, err)
 		return
 	}
 
-	electionID := r.PathValue("electionId")
 	portfolioID := r.PathValue("portfolioId")
 	err = h.service.DeletePortfolio(r.Context(), electionID, portfolioID)
 
@@ -258,13 +288,10 @@ type createCandidateRequest struct {
 }
 
 func (h *Handler) createCandidate(w http.ResponseWriter, r *http.Request) {
-	actor, err := h.authService.Authorize(w, r, "SYSTEMADMIN")
+	electionID := r.PathValue("electionId")
+	actor, err := h.authorizeBallotEditor(w, r, electionID)
 	if err != nil {
-		if errors.Is(err, auth.ErrForbidden) {
-			httpx.Error(w, http.StatusForbidden, "only a systemadmin can edit the ballot")
-		} else {
-			httpx.Error(w, http.StatusUnauthorized, "not authenticated")
-		}
+		writeBallotAuthError(w, err)
 		return
 	}
 
@@ -274,7 +301,6 @@ func (h *Handler) createCandidate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	electionID := r.PathValue("electionId")
 	portfolioID := r.PathValue("portfolioId")
 	result, err := h.service.CreateCandidate(r.Context(), electionID, portfolioID, req.FullName, req.Manifesto)
 
@@ -310,17 +336,13 @@ func (h *Handler) createCandidate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteCandidate(w http.ResponseWriter, r *http.Request) {
-	actor, err := h.authService.Authorize(w, r, "SYSTEMADMIN")
+	electionID := r.PathValue("electionId")
+	actor, err := h.authorizeBallotEditor(w, r, electionID)
 	if err != nil {
-		if errors.Is(err, auth.ErrForbidden) {
-			httpx.Error(w, http.StatusForbidden, "only a systemadmin can edit the ballot")
-		} else {
-			httpx.Error(w, http.StatusUnauthorized, "not authenticated")
-		}
+		writeBallotAuthError(w, err)
 		return
 	}
 
-	electionID := r.PathValue("electionId")
 	portfolioID := r.PathValue("portfolioId")
 	candidateID := r.PathValue("candidateId")
 	err = h.service.DeleteCandidate(r.Context(), electionID, portfolioID, candidateID)
@@ -349,6 +371,117 @@ func (h *Handler) deleteCandidate(w http.ResponseWriter, r *http.Request) {
 	default:
 		log.Printf("deleting candidate failed: %v", err)
 		httpx.Error(w, http.StatusInternalServerError, "failed to delete candidate")
+	}
+}
+
+func (h *Handler) listAssignedAdmins(w http.ResponseWriter, r *http.Request) {
+	if _, err := h.authService.Authorize(w, r, dashboardRoles...); err != nil {
+		httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	assignments, err := h.service.ListAssignedAdmins(r.Context(), r.PathValue("electionId"))
+	if err != nil {
+		log.Printf("listing assigned admins failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to list assigned admins")
+		return
+	}
+
+	httpx.JSON(w, http.StatusOK, assignments)
+}
+
+type assignAdminRequest struct {
+	UserID string `json:"userId"`
+}
+
+func (h *Handler) assignAdmin(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.authService.Authorize(w, r, "SYSTEMADMIN")
+	if err != nil {
+		if errors.Is(err, auth.ErrForbidden) {
+			httpx.Error(w, http.StatusForbidden, "only a systemadmin can assign admins")
+		} else {
+			httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+		}
+		return
+	}
+
+	var req assignAdminRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	electionID := r.PathValue("electionId")
+	result, err := h.service.AssignAdmin(r.Context(), electionID, req.UserID, actor.ID)
+
+	switch {
+	case err == nil:
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &actor.ID,
+			Action:      "ELECTION_ADMIN_ASSIGNED",
+			Metadata: map[string]any{
+				"election_id":    electionID,
+				"assigned_user":  result.UserID,
+				"assigned_email": result.Email,
+			},
+			IPAddress: httpx.ClientIP(r),
+			UserAgent: r.Header.Get("User-Agent"),
+		})
+		httpx.JSON(w, http.StatusCreated, result)
+
+	case errors.Is(err, ErrNotFound):
+		httpx.Error(w, http.StatusNotFound, "no such election")
+
+	case errors.Is(err, ErrUserNotFound):
+		httpx.Error(w, http.StatusNotFound, "no such user")
+
+	case errors.Is(err, ErrNotAnAdmin):
+		httpx.Error(w, http.StatusBadRequest, err.Error())
+
+	case errors.Is(err, ErrAlreadyAssigned):
+		httpx.Error(w, http.StatusConflict, err.Error())
+
+	default:
+		log.Printf("assigning admin failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to assign admin")
+	}
+}
+
+func (h *Handler) unassignAdmin(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.authService.Authorize(w, r, "SYSTEMADMIN")
+	if err != nil {
+		if errors.Is(err, auth.ErrForbidden) {
+			httpx.Error(w, http.StatusForbidden, "only a systemadmin can unassign admins")
+		} else {
+			httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+		}
+		return
+	}
+
+	electionID := r.PathValue("electionId")
+	userID := r.PathValue("userId")
+	err = h.service.UnassignAdmin(r.Context(), electionID, userID)
+
+	switch {
+	case err == nil:
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &actor.ID,
+			Action:      "ELECTION_ADMIN_UNASSIGNED",
+			Metadata: map[string]any{
+				"election_id":     electionID,
+				"unassigned_user": userID,
+			},
+			IPAddress: httpx.ClientIP(r),
+			UserAgent: r.Header.Get("User-Agent"),
+		})
+		httpx.JSON(w, http.StatusOK, map[string]string{"status": "unassigned"})
+
+	case errors.Is(err, ErrNotAssigned):
+		httpx.Error(w, http.StatusNotFound, err.Error())
+
+	default:
+		log.Printf("unassigning admin failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to unassign admin")
 	}
 }
 

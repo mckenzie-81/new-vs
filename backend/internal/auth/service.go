@@ -25,6 +25,7 @@ var (
 	ErrInvalidCredentials = errors.New("invalid email or password")
 	ErrAccountLocked      = errors.New("account temporarily locked")
 	ErrAccountNotVerified = errors.New("account not verified")
+	ErrAccountDisabled    = errors.New("account disabled")
 	ErrSessionInvalid     = errors.New("invalid or expired session")
 )
 
@@ -108,6 +109,9 @@ func (s *Service) Login(ctx context.Context, email, password, ip, userAgent stri
 	if status != "ACTIVE" {
 		if err := tx.Commit(ctx); err != nil {
 			return nil, fmt.Errorf("committing: %w", err)
+		}
+		if status == "DISABLED" {
+			return nil, ErrAccountDisabled
 		}
 		return nil, ErrAccountNotVerified
 	}

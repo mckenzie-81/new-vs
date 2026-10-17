@@ -39,6 +39,10 @@ var (
 	ErrEmailInUse            = errors.New("an active account with this email already exists")
 	ErrPersonNotFound        = errors.New("no such person")
 	ErrNotPending            = errors.New("only a pending invite can be revoked")
+	ErrCannotDisableSelf     = errors.New("you cannot disable your own account")
+	ErrAccountNotActive      = errors.New("only an active account can be disabled")
+	ErrAccountNotDisabled    = errors.New("only a disabled account can be reactivated")
+	ErrLastActiveSystemadmin = errors.New("cannot disable the last active systemadmin")
 )
 
 var invitableRoles = map[string]bool{
@@ -483,6 +487,128 @@ func (s *Service) RevokeInvite(ctx context.Context, id string) (*RevokedPerson, 
 
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("committing revoke: %w", err)
+	}
+
+	return &p, nil
+}
+
+// DisableAccount removes access from an already-active administrator -
+// unlike RevokeInvite, this is about someone who's actually using the
+// system, not an unsent invite. A systemadmin can never target their own
+// account (it would kill their own session mid-action, and is simply not
+// what this is for), and the active-systemadmin count is protected from
+// ever dropping to zero even under two concurrent disable requests.
+func (s *Service) DisableAccount(ctx context.Context, actorID, targetID string) (*RevokedPerson, error) {
+	if actorID == targetID {
+		return nil, ErrCannotDisableSelf
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Same lock as invite creation: both touch the active-systemadmin
+	// population, and sharing it closes the race where two systemadmins
+	// simultaneously disable each other, leaving zero behind.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, inviteAdvisoryLockKey); err != nil {
+		return nil, fmt.Errorf("acquiring lock: %w", err)
+	}
+
+	var p RevokedPerson
+	var status string
+	err = tx.QueryRow(ctx, `
+		SELECT name, email, role, status FROM users WHERE id = $1 FOR UPDATE
+	`, targetID).Scan(&p.Name, &p.Email, &p.Role, &status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrPersonNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("looking up person: %w", err)
+	}
+
+	if status != "ACTIVE" {
+		return nil, ErrAccountNotActive
+	}
+
+	if p.Role == "SYSTEMADMIN" {
+		var count int
+		if err := tx.QueryRow(ctx, `
+			SELECT count(*) FROM users WHERE role = 'SYSTEMADMIN' AND status = 'ACTIVE'
+		`).Scan(&count); err != nil {
+			return nil, fmt.Errorf("counting active systemadmins: %w", err)
+		}
+		if count <= 1 {
+			return nil, ErrLastActiveSystemadmin
+		}
+	}
+
+	if _, err := tx.Exec(ctx, `UPDATE users SET status = 'DISABLED' WHERE id = $1`, targetID); err != nil {
+		return nil, fmt.Errorf("disabling account: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id = $1`, targetID); err != nil {
+		return nil, fmt.Errorf("clearing sessions: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("committing disable: %w", err)
+	}
+
+	return &p, nil
+}
+
+// ReactivateAccount restores a disabled account to ACTIVE. For a
+// systemadmin target it's still subject to the same population cap invite
+// creation enforces - reactivating shouldn't be a backdoor past it.
+func (s *Service) ReactivateAccount(ctx context.Context, targetID string) (*RevokedPerson, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, inviteAdvisoryLockKey); err != nil {
+		return nil, fmt.Errorf("acquiring lock: %w", err)
+	}
+
+	var p RevokedPerson
+	var status string
+	err = tx.QueryRow(ctx, `
+		SELECT name, email, role, status FROM users WHERE id = $1 FOR UPDATE
+	`, targetID).Scan(&p.Name, &p.Email, &p.Role, &status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrPersonNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("looking up person: %w", err)
+	}
+
+	if status != "DISABLED" {
+		return nil, ErrAccountNotDisabled
+	}
+
+	if p.Role == "SYSTEMADMIN" {
+		var count int
+		if err := tx.QueryRow(ctx, `
+			SELECT count(*) FROM users
+			WHERE role = 'SYSTEMADMIN' AND status IN ('ACTIVE', 'PENDING_VERIFICATION') AND id <> $1
+		`, targetID).Scan(&count); err != nil {
+			return nil, fmt.Errorf("counting systemadmins: %w", err)
+		}
+		if count >= maxSystemadmins {
+			return nil, ErrSystemadminCapReached
+		}
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE users SET status = 'ACTIVE', failed_login_attempts = 0, locked_until = NULL WHERE id = $1
+	`, targetID); err != nil {
+		return nil, fmt.Errorf("reactivating account: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("committing reactivate: %w", err)
 	}
 
 	return &p, nil

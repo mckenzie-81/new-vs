@@ -81,6 +81,15 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, ErrAccountNotVerified):
 		httpx.Error(w, http.StatusForbidden, "Please verify your email before signing in.")
 
+	case errors.Is(err, ErrAccountDisabled):
+		h.logAudit(r.Context(), audit.Entry{
+			Action:    "LOGIN_BLOCKED_DISABLED",
+			Metadata:  map[string]any{"email_attempted": req.Email},
+			IPAddress: ip,
+			UserAgent: userAgent,
+		})
+		httpx.Error(w, http.StatusForbidden, "This account has been disabled.")
+
 	case errors.Is(err, ErrInvalidCredentials):
 		h.logAudit(r.Context(), audit.Entry{
 			Action:    "LOGIN_FAILED",

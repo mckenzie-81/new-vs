@@ -1,10 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { ApiError, createInvite, revokeInvite, InvitableRole, Person } from "@/lib/api";
+import {
+  ApiError,
+  createInvite,
+  revokeInvite,
+  disableAccount,
+  reactivateAccount,
+  InvitableRole,
+  Person,
+} from "@/lib/api";
 import { Badge } from "./badge";
 
-export function PersonRow({ person, onChange }: { person: Person; onChange: () => void }) {
+export function PersonRow({
+  person,
+  currentUserId,
+  onChange,
+}: {
+  person: Person;
+  currentUserId: string;
+  onChange: () => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
@@ -41,7 +57,35 @@ export function PersonRow({ person, onChange }: { person: Person; onChange: () =
     }
   }
 
+  async function handleDisable() {
+    if (!window.confirm(`Disable ${person.name}'s account? They'll be signed out immediately.`)) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await disableAccount(person.id);
+      onChange();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to disable.");
+      setBusy(false);
+    }
+  }
+
+  async function handleReactivate() {
+    setError(null);
+    setBusy(true);
+    try {
+      await reactivateAccount(person.id);
+      onChange();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to reactivate.");
+      setBusy(false);
+    }
+  }
+
   const isPending = person.status === "PENDING_VERIFICATION";
+  const isActive = person.status === "ACTIVE";
+  const isDisabled = person.status === "DISABLED";
+  const isSelf = person.id === currentUserId;
 
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 py-3">
@@ -69,6 +113,18 @@ export function PersonRow({ person, onChange }: { person: Person; onChange: () =
             Revoke
           </button>
         </div>
+      )}
+
+      {isActive && !isSelf && (
+        <button onClick={handleDisable} disabled={busy} className="text-sm font-semibold text-danger hover:underline disabled:opacity-60">
+          Disable
+        </button>
+      )}
+
+      {isDisabled && (
+        <button onClick={handleReactivate} disabled={busy} className="text-sm font-semibold text-accent hover:underline disabled:opacity-60">
+          Reactivate
+        </button>
       )}
     </li>
   );

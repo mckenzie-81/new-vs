@@ -2,13 +2,23 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { getElection, listPortfolios, Election, Portfolio } from "@/lib/api";
+import {
+  getElection,
+  listPortfolios,
+  listAssignedAdmins,
+  unassignAdmin,
+  ApiError,
+  Election,
+  Portfolio,
+  AdminAssignment,
+} from "@/lib/api";
 import { useDashboardUser } from "@/components/dashboard/user-context";
 import { AdminHeader } from "@/components/dashboard/admin-header";
 import { Breadcrumbs } from "@/components/dashboard/breadcrumbs";
 import { Badge } from "@/components/dashboard/badge";
 import { PortfolioCard } from "@/components/dashboard/portfolio-card";
 import { PortfolioForm } from "@/components/dashboard/portfolio-form";
+import { AssignAdminForm } from "@/components/dashboard/assign-admin-form";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 
@@ -28,7 +38,10 @@ export default function ElectionDetailPage() {
   const user = useDashboardUser();
   const [election, setElection] = useState<Election | null>(null);
   const [portfolios, setPortfolios] = useState<Portfolio[] | null>(null);
+  const [assignedAdmins, setAssignedAdmins] = useState<AdminAssignment[] | null>(null);
   const [addPortfolioOpen, setAddPortfolioOpen] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
 
   const refresh = useCallback(() => {
@@ -38,21 +51,39 @@ export default function ElectionDetailPage() {
     listPortfolios(id)
       .then(setPortfolios)
       .catch(() => setPortfolios([]));
+    listAssignedAdmins(id)
+      .then(setAssignedAdmins)
+      .catch(() => setAssignedAdmins([]));
   }, [id]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
+  async function handleUnassign(userId: string, name: string) {
+    if (!window.confirm(`Unassign ${name} from this election?`)) return;
+    setAssignError(null);
+    try {
+      await unassignAdmin(id, userId);
+      refresh();
+    } catch (err) {
+      setAssignError(err instanceof ApiError ? err.message : "Failed to unassign.");
+    }
+  }
+
   if (notFound) {
     return <p className="py-10 text-sm text-ink-faint">No such election.</p>;
   }
 
-  if (!election) {
+  if (!election || assignedAdmins === null) {
     return <p className="py-10 text-sm text-ink-faint">Loading...</p>;
   }
 
-  const canEdit = user.role === "SYSTEMADMIN" && election.status === "DRAFT";
+  const isAssignedAdmin =
+    user.role === "ADMIN" && assignedAdmins.some((a) => a.userId === user.id);
+  const canEditBallot =
+    election.status === "DRAFT" && (user.role === "SYSTEMADMIN" || isAssignedAdmin);
+  const canManageAssignments = user.role === "SYSTEMADMIN";
 
   return (
     <div>
@@ -80,40 +111,78 @@ export default function ElectionDetailPage() {
       </div>
 
       <AdminHeader
-        title="Ballot"
-        intro={
-          canEdit
-            ? "Portfolios and candidates. Locked once this election leaves draft."
-            : "Portfolios and candidates."
-        }
+        title="Assigned admins"
+        intro="Admins with day-to-day access to this election's ballot."
         actions={
-          canEdit ? (
-            <Button className="w-auto px-5" onClick={() => setAddPortfolioOpen(true)}>
-              Add portfolio
+          canManageAssignments ? (
+            <Button className="w-auto px-5" onClick={() => setAssignOpen(true)}>
+              Assign admin
             </Button>
           ) : undefined
         }
       />
 
-      {portfolios === null && <p className="py-10 text-sm text-ink-faint">Loading...</p>}
-
-      {portfolios !== null && portfolios.length === 0 && (
-        <p className="py-10 text-sm text-ink-faint">No portfolios yet.</p>
-      )}
-
-      {portfolios !== null && portfolios.length > 0 && (
-        <div>
-          {portfolios.map((portfolio) => (
-            <PortfolioCard
-              key={portfolio.id}
-              electionId={election.id}
-              portfolio={portfolio}
-              canEdit={canEdit}
-              onChange={refresh}
-            />
+      {assignedAdmins.length === 0 ? (
+        <p className="py-6 text-sm text-ink-faint">No admins assigned yet.</p>
+      ) : (
+        <ul className="divide-y divide-line border-t border-line">
+          {assignedAdmins.map((a) => (
+            <li key={a.userId} className="flex items-center justify-between gap-4 py-3">
+              <div>
+                <div className="text-sm font-semibold text-ink">{a.name}</div>
+                <div className="text-sm text-ink-muted">{a.email}</div>
+              </div>
+              {canManageAssignments && (
+                <button
+                  onClick={() => handleUnassign(a.userId, a.name)}
+                  className="text-sm font-semibold text-danger hover:underline"
+                >
+                  Unassign
+                </button>
+              )}
+            </li>
           ))}
-        </div>
+        </ul>
       )}
+      {assignError && <p className="mt-2 text-sm text-danger">{assignError}</p>}
+
+      <div className="mt-12">
+        <AdminHeader
+          title="Ballot"
+          intro={
+            canEditBallot
+              ? "Portfolios and candidates. Locked once this election leaves draft."
+              : "Portfolios and candidates."
+          }
+          actions={
+            canEditBallot ? (
+              <Button className="w-auto px-5" onClick={() => setAddPortfolioOpen(true)}>
+                Add portfolio
+              </Button>
+            ) : undefined
+          }
+        />
+
+        {portfolios === null && <p className="py-10 text-sm text-ink-faint">Loading...</p>}
+
+        {portfolios !== null && portfolios.length === 0 && (
+          <p className="py-10 text-sm text-ink-faint">No portfolios yet.</p>
+        )}
+
+        {portfolios !== null && portfolios.length > 0 && (
+          <div>
+            {portfolios.map((portfolio) => (
+              <PortfolioCard
+                key={portfolio.id}
+                electionId={election.id}
+                portfolio={portfolio}
+                canEdit={canEditBallot}
+                onChange={refresh}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       {addPortfolioOpen && (
         <Modal title="Add a portfolio" onClose={() => setAddPortfolioOpen(false)}>
@@ -121,6 +190,19 @@ export default function ElectionDetailPage() {
             electionId={election.id}
             onCreated={() => {
               setAddPortfolioOpen(false);
+              refresh();
+            }}
+          />
+        </Modal>
+      )}
+
+      {assignOpen && (
+        <Modal title="Assign an admin" onClose={() => setAssignOpen(false)}>
+          <AssignAdminForm
+            electionId={election.id}
+            excludeUserIds={assignedAdmins.map((a) => a.userId)}
+            onAssigned={() => {
+              setAssignOpen(false);
               refresh();
             }}
           />

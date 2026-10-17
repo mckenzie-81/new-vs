@@ -33,6 +33,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/invite/accept", h.acceptInvite)
 	mux.HandleFunc("GET /api/people", h.listPeople)
 	mux.HandleFunc("DELETE /api/people/{id}", h.revokeInvite)
+	mux.HandleFunc("POST /api/people/{id}/disable", h.disableAccount)
+	mux.HandleFunc("POST /api/people/{id}/reactivate", h.reactivateAccount)
 }
 
 func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
@@ -341,6 +343,103 @@ func (h *Handler) revokeInvite(w http.ResponseWriter, r *http.Request) {
 	default:
 		log.Printf("invite revoke failed: %v", err)
 		httpx.Error(w, http.StatusInternalServerError, "failed to revoke invite")
+	}
+}
+
+func (h *Handler) disableAccount(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.authService.Authorize(w, r, "SYSTEMADMIN")
+	if err != nil {
+		if errors.Is(err, auth.ErrForbidden) {
+			httpx.Error(w, http.StatusForbidden, "not authorized")
+		} else {
+			httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+		}
+		return
+	}
+
+	id := r.PathValue("id")
+	ip := httpx.ClientIP(r)
+	userAgent := r.Header.Get("User-Agent")
+
+	disabled, err := h.service.DisableAccount(r.Context(), actor.ID, id)
+
+	switch {
+	case err == nil:
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &actor.ID,
+			Action:      "ACCOUNT_DISABLED",
+			Metadata: map[string]any{
+				"disabled_name":  disabled.Name,
+				"disabled_email": disabled.Email,
+				"disabled_role":  disabled.Role,
+			},
+			IPAddress: ip,
+			UserAgent: userAgent,
+		})
+		httpx.JSON(w, http.StatusOK, map[string]string{"status": "disabled"})
+
+	case errors.Is(err, ErrCannotDisableSelf):
+		httpx.Error(w, http.StatusBadRequest, err.Error())
+
+	case errors.Is(err, ErrPersonNotFound):
+		httpx.Error(w, http.StatusNotFound, "no such person")
+
+	case errors.Is(err, ErrAccountNotActive):
+		httpx.Error(w, http.StatusConflict, err.Error())
+
+	case errors.Is(err, ErrLastActiveSystemadmin):
+		httpx.Error(w, http.StatusConflict, err.Error())
+
+	default:
+		log.Printf("account disable failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to disable account")
+	}
+}
+
+func (h *Handler) reactivateAccount(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.authService.Authorize(w, r, "SYSTEMADMIN")
+	if err != nil {
+		if errors.Is(err, auth.ErrForbidden) {
+			httpx.Error(w, http.StatusForbidden, "not authorized")
+		} else {
+			httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+		}
+		return
+	}
+
+	id := r.PathValue("id")
+	ip := httpx.ClientIP(r)
+	userAgent := r.Header.Get("User-Agent")
+
+	reactivated, err := h.service.ReactivateAccount(r.Context(), id)
+
+	switch {
+	case err == nil:
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &actor.ID,
+			Action:      "ACCOUNT_REACTIVATED",
+			Metadata: map[string]any{
+				"reactivated_name":  reactivated.Name,
+				"reactivated_email": reactivated.Email,
+				"reactivated_role":  reactivated.Role,
+			},
+			IPAddress: ip,
+			UserAgent: userAgent,
+		})
+		httpx.JSON(w, http.StatusOK, map[string]string{"status": "active"})
+
+	case errors.Is(err, ErrPersonNotFound):
+		httpx.Error(w, http.StatusNotFound, "no such person")
+
+	case errors.Is(err, ErrAccountNotDisabled):
+		httpx.Error(w, http.StatusConflict, err.Error())
+
+	case errors.Is(err, ErrSystemadminCapReached):
+		httpx.Error(w, http.StatusConflict, "maximum number of systemadmins already exist")
+
+	default:
+		log.Printf("account reactivate failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to reactivate account")
 	}
 }
 

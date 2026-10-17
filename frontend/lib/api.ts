@@ -259,3 +259,38 @@ export async function confirmPasswordReset(
   });
   return response.json();
 }
+
+export async function disableAccount(id: string): Promise<{ status: string }> {
+  const response = await apiFetch(`/api/people/${id}/disable`, { method: "POST" });
+  return response.json();
+}
+
+export async function reactivateAccount(id: string): Promise<{ status: string }> {
+  const response = await apiFetch(`/api/people/${id}/reactivate`, { method: "POST" });
+  return response.json();
+}
+
+export interface AdminAssignment {
+  userId: string;
+  name: string;
+  email: string;
+  assignedAt: string;
+}
+
+export async function listAssignedAdmins(electionId: string): Promise<AdminAssignment[]> {
+  const response = await apiFetch(`/api/elections/${electionId}/admins`);
+  return response.json();
+}
+
+export async function assignAdmin(electionId: string, userId: string): Promise<AdminAssignment> {
+  const response = await apiFetch(`/api/elections/${electionId}/admins`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId }),
+  });
+  return response.json();
+}
+
+export async function unassignAdmin(electionId: string, userId: string): Promise<void> {
+  await apiFetch(`/api/elections/${electionId}/admins/${userId}`, { method: "DELETE" });
+}

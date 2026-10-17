@@ -52,7 +52,7 @@ export default function AdministratorsPage() {
       {people !== null && others.length > 0 && (
         <ul className="divide-y divide-line border-t border-line">
           {people.map((person) => (
-            <PersonRow key={person.id} person={person} onChange={refresh} />
+            <PersonRow key={person.id} person={person} currentUserId={user.id} onChange={refresh} />
           ))}
         </ul>
       )}
