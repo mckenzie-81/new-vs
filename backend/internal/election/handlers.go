@@ -622,17 +622,13 @@ func (h *Handler) unassignAdmin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) submitForApproval(w http.ResponseWriter, r *http.Request) {
-	actor, err := h.authService.Authorize(w, r, "SYSTEMADMIN")
+	electionID := r.PathValue("id")
+	actor, err := h.authorizeBallotEditor(w, r, electionID)
 	if err != nil {
-		if errors.Is(err, auth.ErrForbidden) {
-			httpx.Error(w, http.StatusForbidden, "only a systemadmin can submit an election for approval")
-		} else {
-			httpx.Error(w, http.StatusUnauthorized, "not authenticated")
-		}
+		writeBallotAuthError(w, err)
 		return
 	}
 
-	electionID := r.PathValue("id")
 	result, err := h.service.SubmitForApproval(r.Context(), electionID)
 
 	switch {

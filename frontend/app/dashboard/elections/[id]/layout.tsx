@@ -133,6 +133,9 @@ export default function ElectionLayout({ children }: { children: React.ReactNode
   const base = `/dashboard/elections/${id}`;
   const isSystemadmin = user.role === "SYSTEMADMIN";
   const isApprover = user.role === "APPROVER";
+  const isAssignedAdmin =
+    user.role === "ADMIN" && assignedAdmins.some((a) => a.userId === user.id);
+  const canSubmit = isSystemadmin || isAssignedAdmin;
 
   return (
     <div>
@@ -165,29 +168,30 @@ export default function ElectionLayout({ children }: { children: React.ReactNode
           </p>
         </div>
 
-        {isSystemadmin && (
+        {election.status === "DRAFT" && canSubmit && (
           <div className="flex flex-wrap gap-3">
-            {election.status === "DRAFT" && (
-              <>
-                <button
-                  aria-label="Delete election"
-                  onClick={() => setConfirmDeleteOpen(true)}
-                  disabled={busy}
-                  className="p-2.5 text-ink-faint hover:text-danger disabled:opacity-60"
-                >
-                  <TrashIcon className="h-5 w-5" />
-                </button>
-                <Button variant="accent" onClick={handleSubmit} disabled={busy} fullWidth={false}>
-                  Submit for approval
-                </Button>
-              </>
+            {isSystemadmin && (
+              <button
+                aria-label="Delete election"
+                onClick={() => setConfirmDeleteOpen(true)}
+                disabled={busy}
+                className="p-2.5 text-ink-faint hover:text-danger disabled:opacity-60"
+              >
+                <TrashIcon className="h-5 w-5" />
+              </button>
             )}
-            {election.status === "CLOSED" && (
-              <SecondaryButton onClick={handleArchive} disabled={busy}>
-                Archive
-              </SecondaryButton>
+            {canSubmit && (
+              <Button variant="accent" onClick={handleSubmit} disabled={busy} fullWidth={false}>
+                Submit for approval
+              </Button>
             )}
           </div>
+        )}
+
+        {isSystemadmin && election.status === "CLOSED" && (
+          <SecondaryButton onClick={handleArchive} disabled={busy}>
+            Archive
+          </SecondaryButton>
         )}
 
         {isApprover && election.status === "PENDING_APPROVAL" && (
