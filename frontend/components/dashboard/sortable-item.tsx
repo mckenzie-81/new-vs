@@ -8,16 +8,19 @@ export function SortableItem({
   id,
   disabled,
   as: Tag = "div",
+  data,
   children,
 }: {
   id: string;
   disabled?: boolean;
   as?: "div" | "li";
+  data?: Record<string, unknown>;
   children: React.ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id,
     disabled,
+    data,
   });
 
   const style = {

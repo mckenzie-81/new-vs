@@ -1,16 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
-import { ApiError, deleteCandidate, deletePortfolio, reorderCandidates, Candidate, Portfolio } from "@/lib/api";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { ApiError, deleteCandidate, deletePortfolio, Candidate, Portfolio } from "@/lib/api";
 import { Modal } from "@/components/ui/modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { SortableItem } from "./sortable-item";
@@ -46,6 +38,13 @@ function CandidateThumbnail({ candidate, size }: { candidate: Candidate; size: C
   );
 }
 
+// Candidate drag-and-drop lives here, but the DndContext itself does not -
+// this card is always rendered inside a portfolio-level DndContext owned
+// by the page, and nesting a second independent DndContext here previously
+// broke both dragging and ordinary clicks on Edit/Remove, since two sets
+// of PointerSensor listeners ended up competing over the same DOM subtree.
+// A SortableContext here is fine - dnd-kit supports nesting those under one
+// shared DndContext, which is exactly the "sortable groups" pattern this is.
 export function PortfolioCard({
   electionId,
   portfolio,
@@ -68,19 +67,6 @@ export function PortfolioCard({
     id: string;
     name: string;
   } | null>(null);
-  const [candidates, setCandidates] = useState(portfolio.candidates);
-  const [prevPortfolioCandidates, setPrevPortfolioCandidates] = useState(portfolio.candidates);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
-
-  // Local state exists only for optimistic drag reordering; when the parent
-  // hands us a genuinely new candidates array (after onChange() refetches),
-  // adopt it. Comparing during render rather than in an effect is the
-  // documented way to do this - see "Adjusting state when a prop changes"
-  // in the React docs.
-  if (portfolio.candidates !== prevPortfolioCandidates) {
-    setPrevPortfolioCandidates(portfolio.candidates);
-    setCandidates(portfolio.candidates);
-  }
 
   async function handleDeletePortfolio() {
     setError(null);
@@ -107,24 +93,6 @@ export function PortfolioCard({
       setBusy(false);
       setConfirmDeleteCandidate(null);
     }
-  }
-
-  function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const oldIndex = candidates.findIndex((c) => c.id === active.id);
-    const newIndex = candidates.findIndex((c) => c.id === over.id);
-    const reordered = arrayMove(candidates, oldIndex, newIndex);
-    setCandidates(reordered);
-
-    reorderCandidates(
-      electionId,
-      portfolio.id,
-      reordered.map((c, i) => ({ id: c.id, order: i }))
-    )
-      .then(onChange)
-      .catch(onChange);
   }
 
   return (
@@ -158,51 +126,58 @@ export function PortfolioCard({
 
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
 
-      {candidates.length === 0 ? (
+      {portfolio.candidates.length === 0 ? (
         <p className="mt-3 text-sm text-ink-faint">No candidates yet.</p>
       ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={candidates.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-            <ul className={size === "comfortable" ? "mt-4 flex flex-col gap-3" : "mt-3 flex flex-col gap-2"}>
-              {candidates.map((candidate) => (
-                <SortableItem key={candidate.id} id={candidate.id} disabled={!canEdit} as="li">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className={size === "comfortable" ? "flex items-center gap-3.5" : "flex items-center gap-2.5"}>
-                      <CandidateThumbnail candidate={candidate} size={size} />
-                      <span
-                        className={
-                          size === "comfortable"
-                            ? "text-lg font-medium text-ink"
-                            : "text-sm font-medium text-ink"
-                        }
-                      >
-                        {candidate.fullName}
-                      </span>
-                    </div>
-                    {canEdit && (
-                      <div className="flex shrink-0 items-center gap-3 text-sm">
-                        <button
-                          onClick={() => setEditCandidate(candidate)}
-                          className="text-ink-faint hover:text-ink"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() =>
-                            setConfirmDeleteCandidate({ id: candidate.id, name: candidate.fullName })
-                          }
-                          className="text-ink-faint hover:text-danger"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    )}
+        <SortableContext
+          items={portfolio.candidates.map((c) => c.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <ul className={size === "comfortable" ? "mt-4 flex flex-col gap-3" : "mt-3 flex flex-col gap-2"}>
+            {portfolio.candidates.map((candidate) => (
+              <SortableItem
+                key={candidate.id}
+                id={candidate.id}
+                disabled={!canEdit}
+                as="li"
+                data={{ type: "candidate", portfolioId: portfolio.id }}
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div className={size === "comfortable" ? "flex items-center gap-3.5" : "flex items-center gap-2.5"}>
+                    <CandidateThumbnail candidate={candidate} size={size} />
+                    <span
+                      className={
+                        size === "comfortable"
+                          ? "text-lg font-medium text-ink"
+                          : "text-sm font-medium text-ink"
+                      }
+                    >
+                      {candidate.fullName}
+                    </span>
                   </div>
-                </SortableItem>
-              ))}
-            </ul>
-          </SortableContext>
-        </DndContext>
+                  {canEdit && (
+                    <div className="flex shrink-0 items-center gap-3 text-sm">
+                      <button
+                        onClick={() => setEditCandidate(candidate)}
+                        className="text-ink-faint hover:text-ink"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() =>
+                          setConfirmDeleteCandidate({ id: candidate.id, name: candidate.fullName })
+                        }
+                        className="text-ink-faint hover:text-danger"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </SortableItem>
+            ))}
+          </ul>
+        </SortableContext>
       )}
 
       {canEdit && (
