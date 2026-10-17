@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ApiError, getBootstrapStatus, initiateBootstrap } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Field } from "@/components/ui/field";
 import { CenteredCard, CenteredMessage } from "@/components/layout/centered-card";
 
@@ -125,10 +126,9 @@ export default function Home() {
         </Field>
 
         <Field label="Password" htmlFor="password" hint="At least 12 characters">
-          <Input
+          <PasswordInput
             id="password"
             required
-            type="password"
             minLength={12}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -136,10 +136,9 @@ export default function Home() {
         </Field>
 
         <Field label="Setup key" htmlFor="secret">
-          <Input
+          <PasswordInput
             id="secret"
             required
-            type="password"
             value={secret}
             onChange={(e) => setSecret(e.target.value)}
           />

@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { ApiError, acceptInvite } from "@/lib/api";
 import { CenteredCard, CenteredMessage } from "@/components/layout/centered-card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Field } from "@/components/ui/field";
 
 export default function AcceptInviteClient() {
@@ -92,10 +92,9 @@ export default function AcceptInviteClient() {
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
         <Field label="Password" htmlFor="password" hint="At least 12 characters">
-          <Input
+          <PasswordInput
             id="password"
             required
-            type="password"
             minLength={12}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -103,10 +102,9 @@ export default function AcceptInviteClient() {
         </Field>
 
         <Field label="Confirm password" htmlFor="confirm-password">
-          <Input
+          <PasswordInput
             id="confirm-password"
             required
-            type="password"
             minLength={12}
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}

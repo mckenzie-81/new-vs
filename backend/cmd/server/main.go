@@ -32,7 +32,7 @@ func main() {
 	}
 
 	authService := auth.NewService(pool, cfg.CookieSecure)
-	authHandler := auth.NewHandler(authService, pool, cfg.CookieSecure)
+	authHandler := auth.NewHandler(authService, pool, cfg.CookieSecure, cfg.AppBaseURL)
 
 	bootstrapService := bootstrap.NewService(pool, cfg.BootstrapSecret)
 	bootstrapHandler := bootstrap.NewHandler(bootstrapService, authService, pool, cfg.AppBaseURL)

@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ApiError, login } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Field } from "@/components/ui/field";
 import { CenteredCard } from "@/components/layout/centered-card";
 
@@ -50,14 +52,17 @@ export default function LoginPage() {
         </Field>
 
         <Field label="Password" htmlFor="password">
-          <Input
+          <PasswordInput
             id="password"
             required
-            type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
         </Field>
+
+        <Link href="/forgot-password" className="-mt-2 self-start text-sm text-accent hover:underline">
+          Forgot password?
+        </Link>
 
         {error && <p className="text-sm text-danger">{error}</p>}
 

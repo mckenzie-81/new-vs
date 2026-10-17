@@ -238,3 +238,24 @@ export async function deleteCandidate(
     { method: "DELETE" }
   );
 }
+
+export async function requestPasswordReset(email: string): Promise<{ status: string }> {
+  const response = await apiFetch("/api/password-reset/request", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  return response.json();
+}
+
+export async function confirmPasswordReset(
+  token: string,
+  newPassword: string
+): Promise<{ status: string }> {
+  const response = await apiFetch("/api/password-reset/confirm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, newPassword }),
+  });
+  return response.json();
+}
