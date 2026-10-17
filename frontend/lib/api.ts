@@ -133,3 +133,36 @@ export async function revokeInvite(id: string): Promise<{ status: string }> {
   const response = await apiFetch(`/api/people/${id}`, { method: "DELETE" });
   return response.json();
 }
+
+export interface Election {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  startTime: string;
+  endTime: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateElectionInput {
+  title: string;
+  description: string;
+  startTime: string;
+  endTime: string;
+}
+
+export async function createElection(input: CreateElectionInput): Promise<Election> {
+  const response = await apiFetch("/api/elections", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return response.json();
+}
+
+export async function listElections(): Promise<Election[]> {
+  const response = await apiFetch("/api/elections");
+  return response.json();
+}

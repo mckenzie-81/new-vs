@@ -9,6 +9,7 @@ import (
 	"backend/internal/bootstrap"
 	"backend/internal/config"
 	"backend/internal/db"
+	"backend/internal/election"
 	"backend/internal/httpx"
 )
 
@@ -36,9 +37,13 @@ func main() {
 	bootstrapService := bootstrap.NewService(pool, cfg.BootstrapSecret)
 	bootstrapHandler := bootstrap.NewHandler(bootstrapService, authService, pool, cfg.AppBaseURL)
 
+	electionService := election.NewService(pool)
+	electionHandler := election.NewHandler(electionService, authService, pool)
+
 	mux := http.NewServeMux()
 	bootstrapHandler.Register(mux)
 	authHandler.Register(mux)
+	electionHandler.Register(mux)
 
 	handler := httpx.CORS(cfg.AppBaseURL, mux)
 
