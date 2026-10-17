@@ -193,6 +193,9 @@ func (s *Service) UploadVoters(ctx context.Context, databaseID string, r io.Read
 	for i := range header {
 		header[i] = strings.TrimSpace(header[i])
 	}
+	if len(header) > 0 {
+		header[0] = strings.TrimPrefix(header[0], string([]byte{0xEF, 0xBB, 0xBF}))
+	}
 
 	nameIdx, emailIdx := -1, -1
 	for i, h := range header {
