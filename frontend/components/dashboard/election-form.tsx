@@ -5,6 +5,7 @@ import { ApiError, createElection, updateElection, Election } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
+import { ElectorateSelector } from "./electorate-selector";
 
 // datetime-local inputs need "YYYY-MM-DDTHH:mm" in the browser's local
 // time - this reverses the ISO string we get back from the server into
@@ -28,6 +29,12 @@ export function ElectionForm({
     election ? toLocalInputValue(election.startTime) : ""
   );
   const [endTime, setEndTime] = useState(election ? toLocalInputValue(election.endTime) : "");
+  const [electorateDatabaseId, setElectorateDatabaseId] = useState(
+    election?.electorateDatabaseId ?? ""
+  );
+  const [electorateFilter, setElectorateFilter] = useState<Record<string, string>>(
+    election?.electorateFilter ?? {}
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,12 +53,21 @@ export function ElectionForm({
       return;
     }
 
+    const payload = {
+      title,
+      description,
+      startTime: startISO,
+      endTime: endISO,
+      electorateDatabaseId,
+      electorateFilter,
+    };
+
     setSubmitting(true);
     try {
       if (election) {
-        await updateElection(election.id, { title, description, startTime: startISO, endTime: endISO });
+        await updateElection(election.id, payload);
       } else {
-        await createElection({ title, description, startTime: startISO, endTime: endISO });
+        await createElection(payload);
       }
       onSaved();
     } catch (err) {
@@ -100,6 +116,13 @@ export function ElectionForm({
           />
         </Field>
       </div>
+
+      <ElectorateSelector
+        databaseId={electorateDatabaseId}
+        filter={electorateFilter}
+        onDatabaseChange={setElectorateDatabaseId}
+        onFilterChange={setElectorateFilter}
+      />
 
       {error && <p className="text-sm text-danger">{error}</p>}
 

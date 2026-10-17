@@ -2,6 +2,7 @@ import {
   Squares2X2Icon,
   ClipboardDocumentCheckIcon,
   UsersIcon,
+  CircleStackIcon,
   ListBulletIcon,
   Cog6ToothIcon,
 } from "@heroicons/react/24/outline";
@@ -41,6 +42,12 @@ export const navSections: NavSection[] = [
         label: "Administrators",
         href: "/dashboard/administrators",
         icon: UsersIcon,
+        roles: ["SYSTEMADMIN"],
+      },
+      {
+        label: "Electorate",
+        href: "/dashboard/electorate",
+        icon: CircleStackIcon,
         roles: ["SYSTEMADMIN"],
       },
     ],

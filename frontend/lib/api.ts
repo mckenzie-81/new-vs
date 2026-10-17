@@ -144,6 +144,8 @@ export interface Election {
   createdBy: string;
   approvedBy: string | null;
   rejectionReason: string | null;
+  electorateDatabaseId: string;
+  electorateFilter: Record<string, string>;
   createdAt: string;
   updatedAt: string;
 }
@@ -153,6 +155,8 @@ export interface CreateElectionInput {
   description: string;
   startTime: string;
   endTime: string;
+  electorateDatabaseId: string;
+  electorateFilter: Record<string, string>;
 }
 
 export async function createElection(input: CreateElectionInput): Promise<Election> {
@@ -380,4 +384,88 @@ export async function reorderCandidates(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(order),
   });
+}
+
+export interface ElectorateDatabase {
+  id: string;
+  name: string;
+  description: string | null;
+  columns: string[];
+  voterCount: number;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Voter {
+  id: string;
+  data: Record<string, string>;
+}
+
+export interface UploadResult {
+  imported: number;
+  skipped: number;
+}
+
+export interface ElectorateSummary {
+  databaseId: string;
+  databaseName: string;
+  filter: Record<string, string>;
+  eligibleCount: number;
+}
+
+export async function createElectorateDatabase(
+  name: string,
+  description: string
+): Promise<ElectorateDatabase> {
+  const response = await apiFetch("/api/electorate-databases", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, description }),
+  });
+  return response.json();
+}
+
+export async function listElectorateDatabases(): Promise<ElectorateDatabase[]> {
+  const response = await apiFetch("/api/electorate-databases");
+  return response.json();
+}
+
+export async function getElectorateDatabase(id: string): Promise<ElectorateDatabase> {
+  const response = await apiFetch(`/api/electorate-databases/${id}`);
+  return response.json();
+}
+
+export async function deleteElectorateDatabase(id: string): Promise<void> {
+  await apiFetch(`/api/electorate-databases/${id}`, { method: "DELETE" });
+}
+
+export async function uploadVoters(id: string, file: File): Promise<UploadResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await apiFetch(`/api/electorate-databases/${id}/upload`, {
+    method: "POST",
+    body: formData,
+  });
+  return response.json();
+}
+
+export async function listElectorateVoters(
+  id: string,
+  filter: Record<string, string> = {}
+): Promise<Voter[]> {
+  const params = new URLSearchParams(filter);
+  const response = await apiFetch(`/api/electorate-databases/${id}/voters?${params.toString()}`);
+  return response.json();
+}
+
+export async function getDistinctValues(id: string, column: string): Promise<string[]> {
+  const params = new URLSearchParams({ column });
+  const response = await apiFetch(`/api/electorate-databases/${id}/distinct?${params.toString()}`);
+  return response.json();
+}
+
+export async function getElectionElectorate(electionId: string): Promise<ElectorateSummary> {
+  const response = await apiFetch(`/api/elections/${electionId}/electorate`);
+  return response.json();
 }

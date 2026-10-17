@@ -39,6 +39,7 @@ function formatRange(startTime: string, endTime: string) {
 
 const tabs = [
   { label: "Ballot", href: "" },
+  { label: "Electorate", href: "/electorate" },
   { label: "Assigned admins", href: "/admins" },
   { label: "Results", href: "/results" },
 ];

@@ -32,6 +32,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/elections", h.list)
 	mux.HandleFunc("GET /api/elections/{id}", h.get)
 	mux.HandleFunc("PUT /api/elections/{id}", h.updateElection)
+	mux.HandleFunc("GET /api/elections/{id}/electorate", h.getElectorateSummary)
 	mux.HandleFunc("GET /api/elections/{electionId}/portfolios", h.listPortfolios)
 	mux.HandleFunc("POST /api/elections/{electionId}/portfolios", h.createPortfolio)
 	mux.HandleFunc("PUT /api/elections/{electionId}/portfolios/order", h.reorderPortfolios)
@@ -86,10 +87,12 @@ func writeBallotAuthError(w http.ResponseWriter, err error) {
 }
 
 type createRequest struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	StartTime   string `json:"startTime"`
-	EndTime     string `json:"endTime"`
+	Title                string            `json:"title"`
+	Description          string            `json:"description"`
+	StartTime            string            `json:"startTime"`
+	EndTime              string            `json:"endTime"`
+	ElectorateDatabaseID string            `json:"electorateDatabaseId"`
+	ElectorateFilter     map[string]string `json:"electorateFilter"`
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -124,10 +127,12 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	userAgent := r.Header.Get("User-Agent")
 
 	result, err := h.service.Create(r.Context(), actor.ID, CreateInput{
-		Title:       req.Title,
-		Description: req.Description,
-		StartTime:   startTime,
-		EndTime:     endTime,
+		Title:                req.Title,
+		Description:          req.Description,
+		StartTime:            startTime,
+		EndTime:              endTime,
+		ElectorateDatabaseID: req.ElectorateDatabaseID,
+		ElectorateFilter:     req.ElectorateFilter,
 	})
 
 	switch {
@@ -143,6 +148,9 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 			UserAgent: userAgent,
 		})
 		httpx.JSON(w, http.StatusCreated, result)
+
+	case errors.Is(err, ErrElectorateNotFound):
+		httpx.Error(w, http.StatusBadRequest, err.Error())
 
 	case errors.Is(err, ErrInvalidInput):
 		httpx.Error(w, http.StatusBadRequest, err.Error())
@@ -179,10 +187,12 @@ func (h *Handler) updateElection(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.service.Update(r.Context(), electionID, CreateInput{
-		Title:       req.Title,
-		Description: req.Description,
-		StartTime:   startTime,
-		EndTime:     endTime,
+		Title:                req.Title,
+		Description:          req.Description,
+		StartTime:            startTime,
+		EndTime:              endTime,
+		ElectorateDatabaseID: req.ElectorateDatabaseID,
+		ElectorateFilter:     req.ElectorateFilter,
 	})
 
 	switch {
@@ -204,6 +214,9 @@ func (h *Handler) updateElection(w http.ResponseWriter, r *http.Request) {
 
 	case errors.Is(err, ErrElectionNotDraft):
 		httpx.Error(w, http.StatusConflict, err.Error())
+
+	case errors.Is(err, ErrElectorateNotFound):
+		httpx.Error(w, http.StatusBadRequest, err.Error())
 
 	case errors.Is(err, ErrInvalidInput):
 		httpx.Error(w, http.StatusBadRequest, err.Error())
@@ -245,6 +258,24 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 	default:
 		log.Printf("getting election failed: %v", err)
 		httpx.Error(w, http.StatusInternalServerError, "failed to get election")
+	}
+}
+
+func (h *Handler) getElectorateSummary(w http.ResponseWriter, r *http.Request) {
+	if _, err := h.authService.Authorize(w, r, dashboardRoles...); err != nil {
+		httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	summary, err := h.service.GetElectorateSummary(r.Context(), r.PathValue("id"))
+	switch {
+	case err == nil:
+		httpx.JSON(w, http.StatusOK, summary)
+	case errors.Is(err, ErrNotFound):
+		httpx.Error(w, http.StatusNotFound, "no such election")
+	default:
+		log.Printf("getting electorate summary failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to get electorate summary")
 	}
 }
 
@@ -710,7 +741,7 @@ func (h *Handler) submitForApproval(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, ErrElectionNotDraft):
 		httpx.Error(w, http.StatusConflict, err.Error())
 
-	case errors.Is(err, ErrEmptyBallot), errors.Is(err, ErrPortfolioEmpty):
+	case errors.Is(err, ErrEmptyBallot), errors.Is(err, ErrPortfolioEmpty), errors.Is(err, ErrNoEligibleVoters):
 		httpx.Error(w, http.StatusBadRequest, err.Error())
 
 	default:

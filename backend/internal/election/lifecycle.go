@@ -12,6 +12,7 @@ const maxRejectionReasonLength = 1000
 var (
 	ErrEmptyBallot        = errors.New("add at least one portfolio with a candidate before submitting for approval")
 	ErrPortfolioEmpty     = errors.New("every portfolio needs at least one candidate before submitting for approval")
+	ErrNoEligibleVoters   = errors.New("the linked electorate has no eligible voters - check the database and filter before submitting")
 	ErrElectionNotClosed  = errors.New("only a closed election can be archived")
 	ErrNotPendingApproval = errors.New("only an election awaiting approval can be approved or rejected")
 )
@@ -40,6 +41,14 @@ func (s *Service) SubmitForApproval(ctx context.Context, electionID string) (*El
 		if len(p.Candidates) == 0 {
 			return nil, ErrPortfolioEmpty
 		}
+	}
+
+	eligibleCount, err := s.electorate.CountEligible(ctx, e.ElectorateDatabaseID, e.ElectorateFilter)
+	if err != nil {
+		return nil, fmt.Errorf("checking electorate: %w", err)
+	}
+	if eligibleCount == 0 {
+		return nil, ErrNoEligibleVoters
 	}
 
 	if _, err := s.pool.Exec(ctx, `
