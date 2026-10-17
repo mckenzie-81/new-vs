@@ -166,3 +166,75 @@ export async function listElections(): Promise<Election[]> {
   const response = await apiFetch("/api/elections");
   return response.json();
 }
+
+export async function getElection(id: string): Promise<Election> {
+  const response = await apiFetch(`/api/elections/${id}`);
+  return response.json();
+}
+
+export interface Candidate {
+  id: string;
+  portfolioId: string;
+  fullName: string;
+  manifesto: string | null;
+  createdAt: string;
+}
+
+export interface Portfolio {
+  id: string;
+  electionId: string;
+  title: string;
+  description: string | null;
+  createdAt: string;
+  candidates: Candidate[];
+}
+
+export async function listPortfolios(electionId: string): Promise<Portfolio[]> {
+  const response = await apiFetch(`/api/elections/${electionId}/portfolios`);
+  return response.json();
+}
+
+export async function createPortfolio(
+  electionId: string,
+  title: string,
+  description: string
+): Promise<Portfolio> {
+  const response = await apiFetch(`/api/elections/${electionId}/portfolios`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, description }),
+  });
+  return response.json();
+}
+
+export async function deletePortfolio(electionId: string, portfolioId: string): Promise<void> {
+  await apiFetch(`/api/elections/${electionId}/portfolios/${portfolioId}`, { method: "DELETE" });
+}
+
+export async function createCandidate(
+  electionId: string,
+  portfolioId: string,
+  fullName: string,
+  manifesto: string
+): Promise<Candidate> {
+  const response = await apiFetch(
+    `/api/elections/${electionId}/portfolios/${portfolioId}/candidates`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fullName, manifesto }),
+    }
+  );
+  return response.json();
+}
+
+export async function deleteCandidate(
+  electionId: string,
+  portfolioId: string,
+  candidateId: string
+): Promise<void> {
+  await apiFetch(
+    `/api/elections/${electionId}/portfolios/${portfolioId}/candidates/${candidateId}`,
+    { method: "DELETE" }
+  );
+}
