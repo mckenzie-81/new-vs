@@ -294,3 +294,17 @@ export async function assignAdmin(electionId: string, userId: string): Promise<A
 export async function unassignAdmin(electionId: string, userId: string): Promise<void> {
   await apiFetch(`/api/elections/${electionId}/admins/${userId}`, { method: "DELETE" });
 }
+
+export async function submitForApproval(electionId: string): Promise<Election> {
+  const response = await apiFetch(`/api/elections/${electionId}/submit`, { method: "POST" });
+  return response.json();
+}
+
+export async function deleteElection(electionId: string): Promise<void> {
+  await apiFetch(`/api/elections/${electionId}`, { method: "DELETE" });
+}
+
+export async function archiveElection(electionId: string): Promise<Election> {
+  const response = await apiFetch(`/api/elections/${electionId}/archive`, { method: "POST" });
+  return response.json();
+}

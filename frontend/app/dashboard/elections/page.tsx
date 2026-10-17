@@ -33,7 +33,7 @@ export default function ElectionsPage() {
         intro="Create, approve, and run elections."
         actions={
           user.role === "SYSTEMADMIN" ? (
-            <Button className="w-auto px-5" onClick={() => setCreateOpen(true)}>
+            <Button fullWidth={false} onClick={() => setCreateOpen(true)}>
               Create election
             </Button>
           ) : undefined

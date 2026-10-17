@@ -11,6 +11,7 @@ import {
   Person,
 } from "@/lib/api";
 import { Badge } from "./badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 export function PersonRow({
   person,
@@ -24,6 +25,7 @@ export function PersonRow({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<"revoke" | "disable" | null>(null);
 
   const joined = new Date(person.createdAt).toLocaleDateString(undefined, {
     month: "short",
@@ -45,7 +47,6 @@ export function PersonRow({
   }
 
   async function handleRevoke() {
-    if (!window.confirm(`Revoke the invite for ${person.name}?`)) return;
     setError(null);
     setBusy(true);
     try {
@@ -54,11 +55,11 @@ export function PersonRow({
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to revoke.");
       setBusy(false);
+      setConfirmAction(null);
     }
   }
 
   async function handleDisable() {
-    if (!window.confirm(`Disable ${person.name}'s account? They'll be signed out immediately.`)) return;
     setError(null);
     setBusy(true);
     try {
@@ -67,6 +68,7 @@ export function PersonRow({
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to disable.");
       setBusy(false);
+      setConfirmAction(null);
     }
   }
 
@@ -109,14 +111,14 @@ export function PersonRow({
               Resend
             </button>
           )}
-          <button onClick={handleRevoke} disabled={busy} className="text-danger hover:underline disabled:opacity-60">
+          <button onClick={() => setConfirmAction("revoke")} disabled={busy} className="text-danger hover:underline disabled:opacity-60">
             Revoke
           </button>
         </div>
       )}
 
       {isActive && !isSelf && (
-        <button onClick={handleDisable} disabled={busy} className="text-sm font-semibold text-danger hover:underline disabled:opacity-60">
+        <button onClick={() => setConfirmAction("disable")} disabled={busy} className="text-sm font-semibold text-danger hover:underline disabled:opacity-60">
           Disable
         </button>
       )}
@@ -126,6 +128,28 @@ export function PersonRow({
           Reactivate
         </button>
       )}
+
+      <ConfirmDialog
+        open={confirmAction === "revoke"}
+        title="Revoke this invite?"
+        description={`The invite for ${person.name} will be cancelled and the link will stop working.`}
+        confirmLabel="Revoke"
+        danger
+        busy={busy}
+        onConfirm={handleRevoke}
+        onCancel={() => setConfirmAction(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmAction === "disable"}
+        title="Disable this account?"
+        description={`${person.name} will be signed out immediately and won't be able to log in until reactivated.`}
+        confirmLabel="Disable"
+        danger
+        busy={busy}
+        onConfirm={handleDisable}
+        onCancel={() => setConfirmAction(null)}
+      />
     </li>
   );
 }

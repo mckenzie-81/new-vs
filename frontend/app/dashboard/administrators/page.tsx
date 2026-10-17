@@ -35,7 +35,7 @@ export default function AdministratorsPage() {
         title="Administrators"
         intro="Systemadmins, admins, and approvers."
         actions={
-          <Button className="w-auto px-5" onClick={() => setInviteOpen(true)}>
+          <Button fullWidth={false} onClick={() => setInviteOpen(true)}>
             Invite
           </Button>
         }

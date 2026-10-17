@@ -39,6 +39,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/elections/{electionId}/admins", h.listAssignedAdmins)
 	mux.HandleFunc("POST /api/elections/{electionId}/admins", h.assignAdmin)
 	mux.HandleFunc("DELETE /api/elections/{electionId}/admins/{userId}", h.unassignAdmin)
+	mux.HandleFunc("POST /api/elections/{id}/submit", h.submitForApproval)
+	mux.HandleFunc("DELETE /api/elections/{id}", h.deleteElection)
+	mux.HandleFunc("POST /api/elections/{id}/archive", h.archiveElection)
 }
 
 // authorizeBallotEditor allows a systemadmin unconditionally, or an admin
@@ -482,6 +485,120 @@ func (h *Handler) unassignAdmin(w http.ResponseWriter, r *http.Request) {
 	default:
 		log.Printf("unassigning admin failed: %v", err)
 		httpx.Error(w, http.StatusInternalServerError, "failed to unassign admin")
+	}
+}
+
+func (h *Handler) submitForApproval(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.authService.Authorize(w, r, "SYSTEMADMIN")
+	if err != nil {
+		if errors.Is(err, auth.ErrForbidden) {
+			httpx.Error(w, http.StatusForbidden, "only a systemadmin can submit an election for approval")
+		} else {
+			httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+		}
+		return
+	}
+
+	electionID := r.PathValue("id")
+	result, err := h.service.SubmitForApproval(r.Context(), electionID)
+
+	switch {
+	case err == nil:
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &actor.ID,
+			Action:      "ELECTION_SUBMITTED",
+			Metadata:    map[string]any{"election_id": electionID, "title": result.Title},
+			IPAddress:   httpx.ClientIP(r),
+			UserAgent:   r.Header.Get("User-Agent"),
+		})
+		httpx.JSON(w, http.StatusOK, result)
+
+	case errors.Is(err, ErrNotFound):
+		httpx.Error(w, http.StatusNotFound, "no such election")
+
+	case errors.Is(err, ErrElectionNotDraft):
+		httpx.Error(w, http.StatusConflict, err.Error())
+
+	case errors.Is(err, ErrEmptyBallot), errors.Is(err, ErrPortfolioEmpty):
+		httpx.Error(w, http.StatusBadRequest, err.Error())
+
+	default:
+		log.Printf("submitting election failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to submit election")
+	}
+}
+
+func (h *Handler) deleteElection(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.authService.Authorize(w, r, "SYSTEMADMIN")
+	if err != nil {
+		if errors.Is(err, auth.ErrForbidden) {
+			httpx.Error(w, http.StatusForbidden, "only a systemadmin can delete an election")
+		} else {
+			httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+		}
+		return
+	}
+
+	electionID := r.PathValue("id")
+	err = h.service.Delete(r.Context(), electionID)
+
+	switch {
+	case err == nil:
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &actor.ID,
+			Action:      "ELECTION_DELETED",
+			Metadata:    map[string]any{"election_id": electionID},
+			IPAddress:   httpx.ClientIP(r),
+			UserAgent:   r.Header.Get("User-Agent"),
+		})
+		httpx.JSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+
+	case errors.Is(err, ErrNotFound):
+		httpx.Error(w, http.StatusNotFound, "no such election")
+
+	case errors.Is(err, ErrElectionNotDraft):
+		httpx.Error(w, http.StatusConflict, err.Error())
+
+	default:
+		log.Printf("deleting election failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to delete election")
+	}
+}
+
+func (h *Handler) archiveElection(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.authService.Authorize(w, r, "SYSTEMADMIN")
+	if err != nil {
+		if errors.Is(err, auth.ErrForbidden) {
+			httpx.Error(w, http.StatusForbidden, "only a systemadmin can archive an election")
+		} else {
+			httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+		}
+		return
+	}
+
+	electionID := r.PathValue("id")
+	result, err := h.service.Archive(r.Context(), electionID)
+
+	switch {
+	case err == nil:
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &actor.ID,
+			Action:      "ELECTION_ARCHIVED",
+			Metadata:    map[string]any{"election_id": electionID, "title": result.Title},
+			IPAddress:   httpx.ClientIP(r),
+			UserAgent:   r.Header.Get("User-Agent"),
+		})
+		httpx.JSON(w, http.StatusOK, result)
+
+	case errors.Is(err, ErrNotFound):
+		httpx.Error(w, http.StatusNotFound, "no such election")
+
+	case errors.Is(err, ErrElectionNotClosed):
+		httpx.Error(w, http.StatusConflict, err.Error())
+
+	default:
+		log.Printf("archiving election failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to archive election")
 	}
 }
 

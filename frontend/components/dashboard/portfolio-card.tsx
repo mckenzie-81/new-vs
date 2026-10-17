@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ApiError, deleteCandidate, deletePortfolio, Portfolio } from "@/lib/api";
 import { Modal } from "@/components/ui/modal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { CandidateForm } from "./candidate-form";
 
 export function PortfolioCard({
@@ -18,26 +19,37 @@ export function PortfolioCard({
 }) {
   const [addCandidateOpen, setAddCandidateOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [confirmDeletePortfolio, setConfirmDeletePortfolio] = useState(false);
+  const [confirmDeleteCandidate, setConfirmDeleteCandidate] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   async function handleDeletePortfolio() {
-    if (!window.confirm(`Delete the "${portfolio.title}" portfolio and all its candidates?`)) return;
     setError(null);
+    setBusy(true);
     try {
       await deletePortfolio(electionId, portfolio.id);
       onChange();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to delete portfolio.");
+      setBusy(false);
+      setConfirmDeletePortfolio(false);
     }
   }
 
-  async function handleDeleteCandidate(candidateId: string, name: string) {
-    if (!window.confirm(`Remove ${name} from this portfolio?`)) return;
+  async function handleDeleteCandidate() {
+    if (!confirmDeleteCandidate) return;
     setError(null);
+    setBusy(true);
     try {
-      await deleteCandidate(electionId, portfolio.id, candidateId);
+      await deleteCandidate(electionId, portfolio.id, confirmDeleteCandidate.id);
       onChange();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to remove candidate.");
+      setBusy(false);
+      setConfirmDeleteCandidate(null);
     }
   }
 
@@ -52,7 +64,7 @@ export function PortfolioCard({
         </div>
         {canEdit && (
           <button
-            onClick={handleDeletePortfolio}
+            onClick={() => setConfirmDeletePortfolio(true)}
             className="text-sm font-semibold text-danger hover:underline"
           >
             Delete
@@ -76,7 +88,9 @@ export function PortfolioCard({
               </div>
               {canEdit && (
                 <button
-                  onClick={() => handleDeleteCandidate(candidate.id, candidate.fullName)}
+                  onClick={() =>
+                    setConfirmDeleteCandidate({ id: candidate.id, name: candidate.fullName })
+                  }
                   className="shrink-0 text-sm text-ink-faint hover:text-danger"
                 >
                   Remove
@@ -108,6 +122,28 @@ export function PortfolioCard({
           />
         </Modal>
       )}
+
+      <ConfirmDialog
+        open={confirmDeletePortfolio}
+        title="Delete this portfolio?"
+        description={`"${portfolio.title}" and all its candidates will be removed.`}
+        confirmLabel="Delete"
+        danger
+        busy={busy}
+        onConfirm={handleDeletePortfolio}
+        onCancel={() => setConfirmDeletePortfolio(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmDeleteCandidate !== null}
+        title="Remove this candidate?"
+        description={`${confirmDeleteCandidate?.name} will be removed from "${portfolio.title}".`}
+        confirmLabel="Remove"
+        danger
+        busy={busy}
+        onConfirm={handleDeleteCandidate}
+        onCancel={() => setConfirmDeleteCandidate(null)}
+      />
     </div>
   );
 }
