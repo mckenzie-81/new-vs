@@ -1,10 +1,37 @@
 "use client";
 
 import { useState } from "react";
-import { ApiError, deleteCandidate, deletePortfolio, Portfolio } from "@/lib/api";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import { ApiError, deleteCandidate, deletePortfolio, reorderCandidates, Candidate, Portfolio } from "@/lib/api";
 import { Modal } from "@/components/ui/modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { SortableItem } from "./sortable-item";
 import { CandidateForm } from "./candidate-form";
+
+function CandidateThumbnail({ candidate }: { candidate: Candidate }) {
+  if (candidate.photoUrl) {
+    return (
+      // next/image needs a fixed set of allowed hosts; the host here isn't
+      // decided yet (Cloudinary vs. our own backend), so a plain img tag
+      // avoids hardcoding one prematurely.
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={candidate.photoUrl} alt="" className="h-8 w-8 shrink-0 bg-page object-cover" />
+    );
+  }
+  return (
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center bg-page text-xs font-semibold text-ink-faint">
+      {candidate.fullName.trim().charAt(0).toUpperCase() || "?"}
+    </div>
+  );
+}
 
 export function PortfolioCard({
   electionId,
@@ -18,6 +45,7 @@ export function PortfolioCard({
   onChange: () => void;
 }) {
   const [addCandidateOpen, setAddCandidateOpen] = useState(false);
+  const [editCandidate, setEditCandidate] = useState<Candidate | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmDeletePortfolio, setConfirmDeletePortfolio] = useState(false);
@@ -25,6 +53,19 @@ export function PortfolioCard({
     id: string;
     name: string;
   } | null>(null);
+  const [candidates, setCandidates] = useState(portfolio.candidates);
+  const [prevPortfolioCandidates, setPrevPortfolioCandidates] = useState(portfolio.candidates);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  // Local state exists only for optimistic drag reordering; when the parent
+  // hands us a genuinely new candidates array (after onChange() refetches),
+  // adopt it. Comparing during render rather than in an effect is the
+  // documented way to do this - see "Adjusting state when a prop changes"
+  // in the React docs.
+  if (portfolio.candidates !== prevPortfolioCandidates) {
+    setPrevPortfolioCandidates(portfolio.candidates);
+    setCandidates(portfolio.candidates);
+  }
 
   async function handleDeletePortfolio() {
     setError(null);
@@ -53,6 +94,24 @@ export function PortfolioCard({
     }
   }
 
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = candidates.findIndex((c) => c.id === active.id);
+    const newIndex = candidates.findIndex((c) => c.id === over.id);
+    const reordered = arrayMove(candidates, oldIndex, newIndex);
+    setCandidates(reordered);
+
+    reorderCandidates(
+      electionId,
+      portfolio.id,
+      reordered.map((c, i) => ({ id: c.id, order: i }))
+    )
+      .then(onChange)
+      .catch(onChange);
+  }
+
   return (
     <div className="border-t border-line py-5 first:border-t-0">
       <div className="flex items-start justify-between gap-4">
@@ -74,31 +133,43 @@ export function PortfolioCard({
 
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
 
-      {portfolio.candidates.length === 0 ? (
+      {candidates.length === 0 ? (
         <p className="mt-3 text-sm text-ink-faint">No candidates yet.</p>
       ) : (
-        <ul className="mt-3 flex flex-col gap-2">
-          {portfolio.candidates.map((candidate) => (
-            <li key={candidate.id} className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-sm font-medium text-ink">{candidate.fullName}</div>
-                {candidate.manifesto && (
-                  <div className="text-sm text-ink-muted">{candidate.manifesto}</div>
-                )}
-              </div>
-              {canEdit && (
-                <button
-                  onClick={() =>
-                    setConfirmDeleteCandidate({ id: candidate.id, name: candidate.fullName })
-                  }
-                  className="shrink-0 text-sm text-ink-faint hover:text-danger"
-                >
-                  Remove
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={candidates.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+            <ul className="mt-3 flex flex-col gap-2">
+              {candidates.map((candidate) => (
+                <SortableItem key={candidate.id} id={candidate.id} disabled={!canEdit} as="li">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-2.5">
+                      <CandidateThumbnail candidate={candidate} />
+                      <span className="text-sm font-medium text-ink">{candidate.fullName}</span>
+                    </div>
+                    {canEdit && (
+                      <div className="flex shrink-0 items-center gap-3 text-sm">
+                        <button
+                          onClick={() => setEditCandidate(candidate)}
+                          className="text-ink-faint hover:text-ink"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() =>
+                            setConfirmDeleteCandidate({ id: candidate.id, name: candidate.fullName })
+                          }
+                          className="text-ink-faint hover:text-danger"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </SortableItem>
+              ))}
+            </ul>
+          </SortableContext>
+        </DndContext>
       )}
 
       {canEdit && (
@@ -115,8 +186,22 @@ export function PortfolioCard({
           <CandidateForm
             electionId={electionId}
             portfolioId={portfolio.id}
-            onCreated={() => {
+            onSaved={() => {
               setAddCandidateOpen(false);
+              onChange();
+            }}
+          />
+        </Modal>
+      )}
+
+      {editCandidate && (
+        <Modal title={`Edit ${editCandidate.fullName}`} onClose={() => setEditCandidate(null)}>
+          <CandidateForm
+            electionId={electionId}
+            portfolioId={portfolio.id}
+            candidate={editCandidate}
+            onSaved={() => {
+              setEditCandidate(null);
               onChange();
             }}
           />

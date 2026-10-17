@@ -1,0 +1,2 @@
+ALTER TABLE portfolios ADD COLUMN display_order INT NOT NULL DEFAULT 0;
+ALTER TABLE candidates ADD COLUMN display_order INT NOT NULL DEFAULT 0;

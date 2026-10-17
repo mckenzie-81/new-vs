@@ -33,8 +33,11 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/elections/{id}", h.get)
 	mux.HandleFunc("GET /api/elections/{electionId}/portfolios", h.listPortfolios)
 	mux.HandleFunc("POST /api/elections/{electionId}/portfolios", h.createPortfolio)
+	mux.HandleFunc("PUT /api/elections/{electionId}/portfolios/order", h.reorderPortfolios)
 	mux.HandleFunc("DELETE /api/elections/{electionId}/portfolios/{portfolioId}", h.deletePortfolio)
 	mux.HandleFunc("POST /api/elections/{electionId}/portfolios/{portfolioId}/candidates", h.createCandidate)
+	mux.HandleFunc("PUT /api/elections/{electionId}/portfolios/{portfolioId}/candidates/order", h.reorderCandidates)
+	mux.HandleFunc("PUT /api/elections/{electionId}/portfolios/{portfolioId}/candidates/{candidateId}", h.updateCandidate)
 	mux.HandleFunc("DELETE /api/elections/{electionId}/portfolios/{portfolioId}/candidates/{candidateId}", h.deleteCandidate)
 	mux.HandleFunc("GET /api/elections/{electionId}/admins", h.listAssignedAdmins)
 	mux.HandleFunc("POST /api/elections/{electionId}/admins", h.assignAdmin)
@@ -285,9 +288,48 @@ func (h *Handler) deletePortfolio(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type createCandidateRequest struct {
-	FullName  string `json:"fullName"`
-	Manifesto string `json:"manifesto"`
+func (h *Handler) reorderPortfolios(w http.ResponseWriter, r *http.Request) {
+	electionID := r.PathValue("electionId")
+	actor, err := h.authorizeBallotEditor(w, r, electionID)
+	if err != nil {
+		writeBallotAuthError(w, err)
+		return
+	}
+
+	var order []OrderEntry
+	if err := json.NewDecoder(r.Body).Decode(&order); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	err = h.service.ReorderPortfolios(r.Context(), electionID, order)
+
+	switch {
+	case err == nil:
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &actor.ID,
+			Action:      "PORTFOLIOS_REORDERED",
+			Metadata:    map[string]any{"election_id": electionID},
+			IPAddress:   httpx.ClientIP(r),
+			UserAgent:   r.Header.Get("User-Agent"),
+		})
+		httpx.JSON(w, http.StatusOK, map[string]string{"status": "reordered"})
+
+	case errors.Is(err, ErrElectionNotDraft):
+		httpx.Error(w, http.StatusConflict, err.Error())
+
+	case errors.Is(err, ErrUnknownOrderItem):
+		httpx.Error(w, http.StatusBadRequest, err.Error())
+
+	default:
+		log.Printf("reordering portfolios failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to reorder portfolios")
+	}
+}
+
+type candidateRequest struct {
+	FullName string `json:"fullName"`
+	PhotoURL string `json:"photoUrl"`
 }
 
 func (h *Handler) createCandidate(w http.ResponseWriter, r *http.Request) {
@@ -298,14 +340,14 @@ func (h *Handler) createCandidate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req createCandidateRequest
+	var req candidateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpx.Error(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	portfolioID := r.PathValue("portfolioId")
-	result, err := h.service.CreateCandidate(r.Context(), electionID, portfolioID, req.FullName, req.Manifesto)
+	result, err := h.service.CreateCandidate(r.Context(), electionID, portfolioID, req.FullName, req.PhotoURL)
 
 	switch {
 	case err == nil:
@@ -335,6 +377,55 @@ func (h *Handler) createCandidate(w http.ResponseWriter, r *http.Request) {
 	default:
 		log.Printf("creating candidate failed: %v", err)
 		httpx.Error(w, http.StatusInternalServerError, "failed to create candidate")
+	}
+}
+
+func (h *Handler) updateCandidate(w http.ResponseWriter, r *http.Request) {
+	electionID := r.PathValue("electionId")
+	actor, err := h.authorizeBallotEditor(w, r, electionID)
+	if err != nil {
+		writeBallotAuthError(w, err)
+		return
+	}
+
+	var req candidateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	portfolioID := r.PathValue("portfolioId")
+	candidateID := r.PathValue("candidateId")
+	result, err := h.service.UpdateCandidate(r.Context(), electionID, portfolioID, candidateID, req.FullName, req.PhotoURL)
+
+	switch {
+	case err == nil:
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &actor.ID,
+			Action:      "CANDIDATE_UPDATED",
+			Metadata: map[string]any{
+				"election_id":  electionID,
+				"portfolio_id": portfolioID,
+				"candidate_id": result.ID,
+				"full_name":    result.FullName,
+			},
+			IPAddress: httpx.ClientIP(r),
+			UserAgent: r.Header.Get("User-Agent"),
+		})
+		httpx.JSON(w, http.StatusOK, result)
+
+	case errors.Is(err, ErrNotFound):
+		httpx.Error(w, http.StatusNotFound, "no such candidate")
+
+	case errors.Is(err, ErrElectionNotDraft):
+		httpx.Error(w, http.StatusConflict, err.Error())
+
+	case errors.Is(err, ErrInvalidInput):
+		httpx.Error(w, http.StatusBadRequest, err.Error())
+
+	default:
+		log.Printf("updating candidate failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to update candidate")
 	}
 }
 
@@ -374,6 +465,46 @@ func (h *Handler) deleteCandidate(w http.ResponseWriter, r *http.Request) {
 	default:
 		log.Printf("deleting candidate failed: %v", err)
 		httpx.Error(w, http.StatusInternalServerError, "failed to delete candidate")
+	}
+}
+
+func (h *Handler) reorderCandidates(w http.ResponseWriter, r *http.Request) {
+	electionID := r.PathValue("electionId")
+	actor, err := h.authorizeBallotEditor(w, r, electionID)
+	if err != nil {
+		writeBallotAuthError(w, err)
+		return
+	}
+
+	portfolioID := r.PathValue("portfolioId")
+	var order []OrderEntry
+	if err := json.NewDecoder(r.Body).Decode(&order); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	err = h.service.ReorderCandidates(r.Context(), electionID, portfolioID, order)
+
+	switch {
+	case err == nil:
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &actor.ID,
+			Action:      "CANDIDATES_REORDERED",
+			Metadata:    map[string]any{"election_id": electionID, "portfolio_id": portfolioID},
+			IPAddress:   httpx.ClientIP(r),
+			UserAgent:   r.Header.Get("User-Agent"),
+		})
+		httpx.JSON(w, http.StatusOK, map[string]string{"status": "reordered"})
+
+	case errors.Is(err, ErrElectionNotDraft):
+		httpx.Error(w, http.StatusConflict, err.Error())
+
+	case errors.Is(err, ErrUnknownOrderItem):
+		httpx.Error(w, http.StatusBadRequest, err.Error())
+
+	default:
+		log.Printf("reordering candidates failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to reorder candidates")
 	}
 }
 

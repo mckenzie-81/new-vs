@@ -176,7 +176,8 @@ export interface Candidate {
   id: string;
   portfolioId: string;
   fullName: string;
-  manifesto: string | null;
+  photoUrl: string | null;
+  displayOrder: number;
   createdAt: string;
 }
 
@@ -185,8 +186,14 @@ export interface Portfolio {
   electionId: string;
   title: string;
   description: string | null;
+  displayOrder: number;
   createdAt: string;
   candidates: Candidate[];
+}
+
+export interface OrderEntry {
+  id: string;
+  order: number;
 }
 
 export async function listPortfolios(electionId: string): Promise<Portfolio[]> {
@@ -215,14 +222,32 @@ export async function createCandidate(
   electionId: string,
   portfolioId: string,
   fullName: string,
-  manifesto: string
+  photoUrl: string
 ): Promise<Candidate> {
   const response = await apiFetch(
     `/api/elections/${electionId}/portfolios/${portfolioId}/candidates`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fullName, manifesto }),
+      body: JSON.stringify({ fullName, photoUrl }),
+    }
+  );
+  return response.json();
+}
+
+export async function updateCandidate(
+  electionId: string,
+  portfolioId: string,
+  candidateId: string,
+  fullName: string,
+  photoUrl: string
+): Promise<Candidate> {
+  const response = await apiFetch(
+    `/api/elections/${electionId}/portfolios/${portfolioId}/candidates/${candidateId}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fullName, photoUrl }),
     }
   );
   return response.json();
@@ -307,4 +332,24 @@ export async function deleteElection(electionId: string): Promise<void> {
 export async function archiveElection(electionId: string): Promise<Election> {
   const response = await apiFetch(`/api/elections/${electionId}/archive`, { method: "POST" });
   return response.json();
+}
+
+export async function reorderPortfolios(electionId: string, order: OrderEntry[]): Promise<void> {
+  await apiFetch(`/api/elections/${electionId}/portfolios/order`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(order),
+  });
+}
+
+export async function reorderCandidates(
+  electionId: string,
+  portfolioId: string,
+  order: OrderEntry[]
+): Promise<void> {
+  await apiFetch(`/api/elections/${electionId}/portfolios/${portfolioId}/candidates/order`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(order),
+  });
 }

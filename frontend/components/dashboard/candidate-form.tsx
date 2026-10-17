@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ApiError, createCandidate } from "@/lib/api";
+import { ApiError, createCandidate, updateCandidate, Candidate } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
@@ -9,14 +9,16 @@ import { Field } from "@/components/ui/field";
 export function CandidateForm({
   electionId,
   portfolioId,
-  onCreated,
+  candidate,
+  onSaved,
 }: {
   electionId: string;
   portfolioId: string;
-  onCreated: () => void;
+  candidate?: Candidate;
+  onSaved: () => void;
 }) {
-  const [fullName, setFullName] = useState("");
-  const [manifesto, setManifesto] = useState("");
+  const [fullName, setFullName] = useState(candidate?.fullName ?? "");
+  const [photoUrl, setPhotoUrl] = useState(candidate?.photoUrl ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,8 +27,12 @@ export function CandidateForm({
     setError(null);
     setSubmitting(true);
     try {
-      await createCandidate(electionId, portfolioId, fullName, manifesto);
-      onCreated();
+      if (candidate) {
+        await updateCandidate(electionId, portfolioId, candidate.id, fullName, photoUrl);
+      } else {
+        await createCandidate(electionId, portfolioId, fullName, photoUrl);
+      }
+      onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
       setSubmitting(false);
@@ -44,18 +50,23 @@ export function CandidateForm({
         />
       </Field>
 
-      <Field label="Manifesto" htmlFor="candidate-manifesto" hint="Optional">
+      <Field
+        label="Photo URL"
+        htmlFor="candidate-photo"
+        hint="Paste a link to an image. Optional."
+      >
         <Input
-          id="candidate-manifesto"
-          value={manifesto}
-          onChange={(e) => setManifesto(e.target.value)}
+          id="candidate-photo"
+          type="url"
+          value={photoUrl}
+          onChange={(e) => setPhotoUrl(e.target.value)}
         />
       </Field>
 
       {error && <p className="text-sm text-danger">{error}</p>}
 
       <Button type="submit" disabled={submitting} className="mt-1">
-        {submitting ? "Adding..." : "Add candidate"}
+        {submitting ? "Saving..." : candidate ? "Save changes" : "Add candidate"}
       </Button>
     </form>
   );
