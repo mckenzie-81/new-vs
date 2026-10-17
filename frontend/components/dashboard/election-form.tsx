@@ -35,6 +35,9 @@ export function ElectionForm({
   const [electorateFilter, setElectorateFilter] = useState<Record<string, string>>(
     election?.electorateFilter ?? {}
   );
+  const [voterVerificationColumns, setVoterVerificationColumns] = useState<string[]>(
+    election?.voterVerificationColumns ?? []
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,6 +63,7 @@ export function ElectionForm({
       endTime: endISO,
       electorateDatabaseId,
       electorateFilter,
+      voterVerificationColumns,
     };
 
     setSubmitting(true);
@@ -120,8 +124,10 @@ export function ElectionForm({
       <ElectorateSelector
         databaseId={electorateDatabaseId}
         filter={electorateFilter}
+        verificationColumns={voterVerificationColumns}
         onDatabaseChange={setElectorateDatabaseId}
         onFilterChange={setElectorateFilter}
+        onVerificationColumnsChange={setVoterVerificationColumns}
       />
 
       {error && <p className="text-sm text-danger">{error}</p>}

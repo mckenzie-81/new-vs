@@ -12,6 +12,7 @@ import (
 	"backend/internal/election"
 	"backend/internal/electorate"
 	"backend/internal/httpx"
+	"backend/internal/voter"
 )
 
 func main() {
@@ -44,11 +45,15 @@ func main() {
 	electionService := election.NewService(pool, electorateService)
 	electionHandler := election.NewHandler(electionService, authService, pool)
 
+	voterService := voter.NewService(pool, electionService, electorateService)
+	voterHandler := voter.NewHandler(voterService, electionService, authService, pool, cfg.AppBaseURL, cfg.CookieSecure)
+
 	mux := http.NewServeMux()
 	bootstrapHandler.Register(mux)
 	authHandler.Register(mux)
 	electionHandler.Register(mux)
 	electorateHandler.Register(mux)
+	voterHandler.Register(mux)
 
 	handler := httpx.CORS(cfg.AppBaseURL, mux)
 

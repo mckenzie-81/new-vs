@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"backend/internal/audit"
 	"backend/internal/auth"
@@ -174,8 +175,17 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
+	var sensitiveColumns []string
+	if raw := r.FormValue("sensitiveColumns"); raw != "" {
+		for _, c := range strings.Split(raw, ",") {
+			if trimmed := strings.TrimSpace(c); trimmed != "" {
+				sensitiveColumns = append(sensitiveColumns, trimmed)
+			}
+		}
+	}
+
 	id := r.PathValue("id")
-	result, err := h.service.UploadVoters(r.Context(), id, file)
+	result, err := h.service.UploadVoters(r.Context(), id, file, sensitiveColumns)
 
 	switch {
 	case err == nil:
@@ -195,7 +205,8 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, ErrNotFound):
 		httpx.Error(w, http.StatusNotFound, "no such electorate database")
 
-	case errors.Is(err, ErrMissingColumns), errors.Is(err, ErrColumnMismatch), errors.Is(err, ErrInvalidInput):
+	case errors.Is(err, ErrMissingColumns), errors.Is(err, ErrColumnMismatch),
+		errors.Is(err, ErrSensitiveColumnMismatch), errors.Is(err, ErrInvalidInput):
 		httpx.Error(w, http.StatusBadRequest, err.Error())
 
 	default:
@@ -246,13 +257,15 @@ func (h *Handler) distinctValues(w http.ResponseWriter, r *http.Request) {
 	}
 
 	values, err := h.service.DistinctValues(r.Context(), r.PathValue("id"), column)
-	if err != nil {
+	switch {
+	case err == nil:
+		httpx.JSON(w, http.StatusOK, values)
+	case errors.Is(err, ErrSensitiveColumn):
+		httpx.Error(w, http.StatusBadRequest, err.Error())
+	default:
 		log.Printf("listing distinct values failed: %v", err)
 		httpx.Error(w, http.StatusInternalServerError, "failed to list distinct values")
-		return
 	}
-
-	httpx.JSON(w, http.StatusOK, values)
 }
 
 func (h *Handler) logAudit(ctx context.Context, entry audit.Entry) {

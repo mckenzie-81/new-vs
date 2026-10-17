@@ -12,16 +12,19 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/bcrypt"
 )
 
 const maxNameLength = 200
 
 var (
-	ErrInvalidInput   = errors.New("invalid input")
-	ErrNotFound       = errors.New("electorate database not found")
-	ErrInUse          = errors.New("this electorate database is linked to at least one election and can't be deleted")
-	ErrColumnMismatch = errors.New("this file's columns don't match the database's existing columns")
-	ErrMissingColumns = errors.New("the file must include a name column and an email column")
+	ErrInvalidInput            = errors.New("invalid input")
+	ErrNotFound                = errors.New("electorate database not found")
+	ErrInUse                   = errors.New("this electorate database is linked to at least one election and can't be deleted")
+	ErrColumnMismatch          = errors.New("this file's columns don't match the database's existing columns")
+	ErrMissingColumns          = errors.New("the file must include a name column and an email column")
+	ErrSensitiveColumnMismatch = errors.New("this file's sensitive columns don't match the database's existing sensitive columns")
+	ErrSensitiveColumn         = errors.New("this column holds hashed values and can't be read back")
 )
 
 type Service struct {
@@ -33,14 +36,15 @@ func NewService(pool *pgxpool.Pool) *Service {
 }
 
 type Database struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description *string   `json:"description"`
-	Columns     []string  `json:"columns"`
-	VoterCount  int       `json:"voterCount"`
-	CreatedBy   string    `json:"createdBy"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID               string    `json:"id"`
+	Name             string    `json:"name"`
+	Description      *string   `json:"description"`
+	Columns          []string  `json:"columns"`
+	SensitiveColumns []string  `json:"sensitiveColumns"`
+	VoterCount       int       `json:"voterCount"`
+	CreatedBy        string    `json:"createdBy"`
+	CreatedAt        time.Time `json:"createdAt"`
+	UpdatedAt        time.Time `json:"updatedAt"`
 }
 
 func (s *Service) CreateDatabase(ctx context.Context, actorID, name, description string) (*Database, error) {
@@ -57,7 +61,7 @@ func (s *Service) CreateDatabase(ctx context.Context, actorID, name, description
 		desc = &trimmed
 	}
 
-	d := Database{Name: name, Description: desc, Columns: []string{}, CreatedBy: actorID}
+	d := Database{Name: name, Description: desc, Columns: []string{}, SensitiveColumns: []string{}, CreatedBy: actorID}
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO electorate_databases (name, description, created_by)
 		VALUES ($1, $2, $3)
@@ -72,7 +76,7 @@ func (s *Service) CreateDatabase(ctx context.Context, actorID, name, description
 
 func (s *Service) ListDatabases(ctx context.Context) ([]Database, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT d.id, d.name, d.description, d.columns, d.created_by, d.created_at, d.updated_at,
+		SELECT d.id, d.name, d.description, d.columns, d.sensitive_columns, d.created_by, d.created_at, d.updated_at,
 			coalesce((SELECT count(*) FROM electorate_voters v WHERE v.electorate_database_id = d.id), 0)
 		FROM electorate_databases d
 		ORDER BY d.created_at DESC
@@ -86,7 +90,7 @@ func (s *Service) ListDatabases(ctx context.Context) ([]Database, error) {
 	for rows.Next() {
 		var d Database
 		if err := rows.Scan(
-			&d.ID, &d.Name, &d.Description, &d.Columns, &d.CreatedBy, &d.CreatedAt, &d.UpdatedAt, &d.VoterCount,
+			&d.ID, &d.Name, &d.Description, &d.Columns, &d.SensitiveColumns, &d.CreatedBy, &d.CreatedAt, &d.UpdatedAt, &d.VoterCount,
 		); err != nil {
 			return nil, fmt.Errorf("scanning electorate database: %w", err)
 		}
@@ -102,11 +106,11 @@ func (s *Service) ListDatabases(ctx context.Context) ([]Database, error) {
 func (s *Service) GetDatabase(ctx context.Context, id string) (*Database, error) {
 	var d Database
 	err := s.pool.QueryRow(ctx, `
-		SELECT d.id, d.name, d.description, d.columns, d.created_by, d.created_at, d.updated_at,
+		SELECT d.id, d.name, d.description, d.columns, d.sensitive_columns, d.created_by, d.created_at, d.updated_at,
 			coalesce((SELECT count(*) FROM electorate_voters v WHERE v.electorate_database_id = d.id), 0)
 		FROM electorate_databases d
 		WHERE d.id = $1
-	`, id).Scan(&d.ID, &d.Name, &d.Description, &d.Columns, &d.CreatedBy, &d.CreatedAt, &d.UpdatedAt, &d.VoterCount)
+	`, id).Scan(&d.ID, &d.Name, &d.Description, &d.Columns, &d.SensitiveColumns, &d.CreatedBy, &d.CreatedAt, &d.UpdatedAt, &d.VoterCount)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -173,6 +177,25 @@ func equalColumns(a, b []string) bool {
 	return true
 }
 
+// equalColumnSets compares two column lists as sets rather than sequences -
+// used for sensitive columns, which are a subset marker rather than a
+// positional header.
+func equalColumnSets(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	normalized := make(map[string]bool, len(a))
+	for _, c := range a {
+		normalized[normalizeHeader(c)] = true
+	}
+	for _, c := range b {
+		if !normalized[normalizeHeader(c)] {
+			return false
+		}
+	}
+	return true
+}
+
 // UploadVoters parses a CSV and adds its rows to a database. The first
 // upload sets the database's column set from the file's header row; every
 // later upload must match those columns exactly, since voter records in
@@ -183,7 +206,15 @@ func equalColumns(a, b []string) bool {
 // Rows with a missing name/email, a malformed email, or an email already
 // present in this database are skipped rather than failing the whole
 // upload.
-func (s *Service) UploadVoters(ctx context.Context, databaseID string, r io.Reader) (*UploadResult, error) {
+//
+// sensitiveColumns names columns (matched case-insensitively against the
+// header, excluding name/email) whose values are secrets - a PIN or a
+// second student ID, say - rather than plain metadata. Those values are
+// bcrypt-hashed before they're ever written to the database and can't be
+// read back in plaintext afterward; see ListVoters and DistinctValues. Like
+// the column set itself, this is fixed by the first upload and every later
+// upload must match it exactly.
+func (s *Service) UploadVoters(ctx context.Context, databaseID string, r io.Reader, sensitiveColumns []string) (*UploadResult, error) {
 	reader := csv.NewReader(r)
 	reader.TrimLeadingSpace = true
 	header, err := reader.Read()
@@ -210,14 +241,32 @@ func (s *Service) UploadVoters(ctx context.Context, databaseID string, r io.Read
 		return nil, ErrMissingColumns
 	}
 
+	headerSet := make(map[string]bool, len(header))
+	for _, h := range header {
+		headerSet[normalizeHeader(h)] = true
+	}
+	sensitiveSet := make(map[string]bool, len(sensitiveColumns))
+	for _, c := range sensitiveColumns {
+		normalized := normalizeHeader(c)
+		if normalized == "name" || normalized == "email" {
+			return nil, fmt.Errorf("%w: name and email can't be marked sensitive", ErrInvalidInput)
+		}
+		if !headerSet[normalized] {
+			return nil, fmt.Errorf("%w: sensitive column %q isn't in the file's header", ErrInvalidInput, c)
+		}
+		sensitiveSet[normalized] = true
+	}
+
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("beginning transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
-	var existingColumns []string
-	err = tx.QueryRow(ctx, `SELECT columns FROM electorate_databases WHERE id = $1 FOR UPDATE`, databaseID).Scan(&existingColumns)
+	var existingColumns, existingSensitive []string
+	err = tx.QueryRow(ctx, `
+		SELECT columns, sensitive_columns FROM electorate_databases WHERE id = $1 FOR UPDATE
+	`, databaseID).Scan(&existingColumns, &existingSensitive)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -229,10 +278,13 @@ func (s *Service) UploadVoters(ctx context.Context, databaseID string, r io.Read
 		if !equalColumns(existingColumns, header) {
 			return nil, ErrColumnMismatch
 		}
+		if !equalColumnSets(existingSensitive, sensitiveColumns) {
+			return nil, ErrSensitiveColumnMismatch
+		}
 	} else {
 		if _, err := tx.Exec(ctx, `
-			UPDATE electorate_databases SET columns = $1, updated_at = now() WHERE id = $2
-		`, header, databaseID); err != nil {
+			UPDATE electorate_databases SET columns = $1, sensitive_columns = $2, updated_at = now() WHERE id = $3
+		`, header, sensitiveColumns, databaseID); err != nil {
 			return nil, fmt.Errorf("setting electorate database columns: %w", err)
 		}
 	}
@@ -265,10 +317,24 @@ func (s *Service) UploadVoters(ctx context.Context, databaseID string, r io.Read
 		}
 		seen[emailKey] = true
 
-		data := make(map[string]string, len(header))
+		data := make(map[string]string, len(header)+1)
 		for i, col := range header {
-			data[col] = strings.TrimSpace(record[i])
+			value := strings.TrimSpace(record[i])
+			if sensitiveSet[normalizeHeader(col)] {
+				hash, err := bcrypt.GenerateFromPassword([]byte(value), bcrypt.DefaultCost)
+				if err != nil {
+					return nil, fmt.Errorf("hashing sensitive value: %w", err)
+				}
+				value = string(hash)
+			}
+			data[col] = value
 		}
+		// The unique index and ON CONFLICT clause below key on the exact
+		// JSON key "email", but the loop above preserves the header's
+		// original casing (e.g. "Email") as the map key - without this,
+		// any database whose header isn't literally lowercase "email"
+		// silently loses deduplication on re-upload.
+		data["email"] = email
 		dataJSON, err := json.Marshal(data)
 		if err != nil {
 			return nil, fmt.Errorf("encoding voter row: %w", err)
@@ -324,9 +390,29 @@ func (s *Service) CountEligible(ctx context.Context, databaseID string, filter m
 	return count, nil
 }
 
+const sensitiveValuePlaceholder = "••••••••"
+
+// maskSensitive overwrites sensitive column values in place with a fixed
+// placeholder, never the bcrypt hash itself - the hash material is never
+// sent to a browser, not even an admin's.
+func maskSensitive(data map[string]string, sensitiveColumns []string) {
+	for _, col := range sensitiveColumns {
+		if _, ok := data[col]; ok {
+			data[col] = sensitiveValuePlaceholder
+		}
+	}
+}
+
 // ListVoters returns up to limit voters matching a filter, for display -
 // this is a sample/browse view, not meant for exporting the full roll.
 func (s *Service) ListVoters(ctx context.Context, databaseID string, filter map[string]string, limit int) ([]Voter, error) {
+	var sensitiveColumns []string
+	if err := s.pool.QueryRow(ctx, `
+		SELECT sensitive_columns FROM electorate_databases WHERE id = $1
+	`, databaseID).Scan(&sensitiveColumns); err != nil {
+		return nil, fmt.Errorf("looking up sensitive columns: %w", err)
+	}
+
 	args := []any{databaseID}
 	clause, args := buildFilterClause(filter, args)
 	query := fmt.Sprintf(`
@@ -352,6 +438,7 @@ func (s *Service) ListVoters(ctx context.Context, databaseID string, filter map[
 		if err := json.Unmarshal(raw, &v.Data); err != nil {
 			return nil, fmt.Errorf("decoding voter data: %w", err)
 		}
+		maskSensitive(v.Data, sensitiveColumns)
 		voters = append(voters, v)
 	}
 	if err := rows.Err(); err != nil {
@@ -361,10 +448,63 @@ func (s *Service) ListVoters(ctx context.Context, databaseID string, filter map[
 	return voters, nil
 }
 
+// EligibleVoter is the minimal projection needed to issue voter
+// credentials - just enough to send an invite, never the full data blob
+// (which may hold bcrypt hashes that have no business loading into memory
+// for a bulk pass over possibly thousands of rows).
+type EligibleVoter struct {
+	ID    string
+	Email string
+}
+
+// ListEligibleVoters returns every voter matching a filter, uncapped -
+// unlike ListVoters (a browse view capped for the admin UI), this backs
+// voter-credential issuance, where silently truncating the roll at some
+// limit would be a correctness bug, not a display nicety.
+func (s *Service) ListEligibleVoters(ctx context.Context, databaseID string, filter map[string]string) ([]EligibleVoter, error) {
+	args := []any{databaseID}
+	clause, args := buildFilterClause(filter, args)
+	query := `SELECT id, data ->> 'email' FROM electorate_voters WHERE electorate_database_id = $1` + clause
+
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("listing eligible voters: %w", err)
+	}
+	defer rows.Close()
+
+	voters := []EligibleVoter{}
+	for rows.Next() {
+		var v EligibleVoter
+		if err := rows.Scan(&v.ID, &v.Email); err != nil {
+			return nil, fmt.Errorf("scanning eligible voter: %w", err)
+		}
+		voters = append(voters, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating eligible voters: %w", err)
+	}
+
+	return voters, nil
+}
+
 // DistinctValues lists the values that actually occur for one column in a
 // database, for building a filter picker from real data rather than free
-// text that might not match anything.
+// text that might not match anything. Refuses a sensitive column outright -
+// every value in one would be a unique bcrypt hash, meaningless as a filter
+// choice and not something to hand back to a browser regardless.
 func (s *Service) DistinctValues(ctx context.Context, databaseID, column string) ([]string, error) {
+	var sensitiveColumns []string
+	if err := s.pool.QueryRow(ctx, `
+		SELECT sensitive_columns FROM electorate_databases WHERE id = $1
+	`, databaseID).Scan(&sensitiveColumns); err != nil {
+		return nil, fmt.Errorf("looking up sensitive columns: %w", err)
+	}
+	for _, c := range sensitiveColumns {
+		if normalizeHeader(c) == normalizeHeader(column) {
+			return nil, ErrSensitiveColumn
+		}
+	}
+
 	rows, err := s.pool.Query(ctx, `
 		SELECT DISTINCT data ->> $2
 		FROM electorate_voters

@@ -18,6 +18,29 @@ var (
 	ErrNotPendingApproval   = errors.New("only an election awaiting approval can be approved or rejected")
 )
 
+// fixupLifecycle self-corrects the status of any election that has crossed
+// a time boundary since it was last read - there's no scheduler to flip
+// APPROVED->LIVE->CLOSED as wall-clock time passes, so every read does it
+// lazily instead. Both updates are no-ops once an election has already
+// crossed the relevant boundary, so steady-state cost is negligible; this
+// runs before every Get/List so every other read in the system (voting
+// eligibility, results gating) sees a status that actually reflects time.
+func (s *Service) fixupLifecycle(ctx context.Context) error {
+	if _, err := s.pool.Exec(ctx, `
+		UPDATE elections SET status = 'LIVE', updated_at = now()
+		WHERE status = 'APPROVED' AND start_time <= now()
+	`); err != nil {
+		return fmt.Errorf("advancing elections to live: %w", err)
+	}
+	if _, err := s.pool.Exec(ctx, `
+		UPDATE elections SET status = 'CLOSED', updated_at = now()
+		WHERE status IN ('APPROVED', 'LIVE') AND end_time <= now()
+	`); err != nil {
+		return fmt.Errorf("advancing elections to closed: %w", err)
+	}
+	return nil
+}
+
 // SubmitForApproval moves a draft to PENDING_APPROVAL. It refuses an empty
 // or half-built ballot - an approver reviewing a portfolio with no
 // candidates isn't reviewing anything real, so that gets caught here

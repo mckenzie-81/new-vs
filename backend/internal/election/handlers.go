@@ -55,7 +55,15 @@ func (h *Handler) Register(mux *http.ServeMux) {
 // who is specifically assigned to this election. An approver never edits a
 // ballot - reviewing one is a different role entirely.
 func (h *Handler) authorizeBallotEditor(w http.ResponseWriter, r *http.Request, electionID string) (*auth.User, error) {
-	actor, err := h.authService.Authorize(w, r, dashboardRoles...)
+	return AuthorizeBallotEditor(h.authService, h.service, w, r, electionID)
+}
+
+// AuthorizeBallotEditor is the package-level form of the same check, for
+// other handler packages (voter credential issuance, specifically) that
+// need the identical "systemadmin or assigned admin" rule without taking
+// on a dependency on election.Handler itself.
+func AuthorizeBallotEditor(authService *auth.Service, service *Service, w http.ResponseWriter, r *http.Request, electionID string) (*auth.User, error) {
+	actor, err := authService.Authorize(w, r, dashboardRoles...)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +71,7 @@ func (h *Handler) authorizeBallotEditor(w http.ResponseWriter, r *http.Request, 
 		return actor, nil
 	}
 	if actor.Role == "ADMIN" {
-		assigned, err := h.service.IsAssigned(r.Context(), electionID, actor.ID)
+		assigned, err := service.IsAssigned(r.Context(), electionID, actor.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -75,6 +83,12 @@ func (h *Handler) authorizeBallotEditor(w http.ResponseWriter, r *http.Request, 
 }
 
 func writeBallotAuthError(w http.ResponseWriter, err error) {
+	WriteBallotAuthError(w, err)
+}
+
+// WriteBallotAuthError is the package-level form of the same error mapping,
+// paired with AuthorizeBallotEditor for reuse outside this package.
+func WriteBallotAuthError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, auth.ErrForbidden):
 		httpx.Error(w, http.StatusForbidden, "only a systemadmin or an admin assigned to this election can edit the ballot")

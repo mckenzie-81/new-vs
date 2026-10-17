@@ -23,8 +23,10 @@ export function Modal({
         className="absolute inset-0 bg-black/30"
         onClick={onClose}
       />
-      <div className={`relative w-full ${widthClasses[size]} border border-line bg-surface p-6`}>
-        <div className="mb-5 flex items-center justify-between gap-4">
+      <div
+        className={`relative flex max-h-[calc(100vh-2rem)] w-full flex-col ${widthClasses[size]} border border-line bg-surface`}
+      >
+        <div className="flex items-center justify-between gap-4 border-b border-line p-6 pb-5">
           <h2 className="text-base font-semibold text-ink">{title}</h2>
           <button
             onClick={onClose}
@@ -33,7 +35,7 @@ export function Modal({
             Close
           </button>
         </div>
-        {children}
+        <div className="min-h-0 overflow-y-auto p-6">{children}</div>
       </div>
     </div>
   );

@@ -17,9 +17,11 @@ export default function ElectionsPage() {
   const [createOpen, setCreateOpen] = useState(false);
 
   const refresh = useCallback(() => {
-    setError(null);
     listElections()
-      .then(setElections)
+      .then((result) => {
+        setElections(result);
+        setError(null);
+      })
       .catch((err) => setError(err instanceof ApiError ? err.message : "Failed to load elections."));
   }, []);
 

@@ -146,6 +146,7 @@ export interface Election {
   rejectionReason: string | null;
   electorateDatabaseId: string | null;
   electorateFilter: Record<string, string>;
+  voterVerificationColumns: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -157,6 +158,7 @@ export interface CreateElectionInput {
   endTime: string;
   electorateDatabaseId: string;
   electorateFilter: Record<string, string>;
+  voterVerificationColumns: string[];
 }
 
 export async function createElection(input: CreateElectionInput): Promise<Election> {
@@ -391,6 +393,7 @@ export interface ElectorateDatabase {
   name: string;
   description: string | null;
   columns: string[];
+  sensitiveColumns: string[];
   voterCount: number;
   createdBy: string;
   createdAt: string;
@@ -443,9 +446,16 @@ export async function deleteElectorateDatabase(id: string): Promise<void> {
   await apiFetch(`/api/electorate-databases/${id}`, { method: "DELETE" });
 }
 
-export async function uploadVoters(id: string, file: File): Promise<UploadResult> {
+export async function uploadVoters(
+  id: string,
+  file: File,
+  sensitiveColumns: string[] = []
+): Promise<UploadResult> {
   const formData = new FormData();
   formData.append("file", file);
+  if (sensitiveColumns.length > 0) {
+    formData.append("sensitiveColumns", sensitiveColumns.join(","));
+  }
   const response = await apiFetch(`/api/electorate-databases/${id}/upload`, {
     method: "POST",
     body: formData,
@@ -471,4 +481,96 @@ export async function getDistinctValues(id: string, column: string): Promise<str
 export async function getElectionElectorate(electionId: string): Promise<ElectorateSummary> {
   const response = await apiFetch(`/api/elections/${electionId}/electorate`);
   return response.json();
+}
+
+export interface IssueVoterCredentialsResult {
+  eligible: number;
+  issued: number;
+  alreadyIssued: number;
+  invites: { email: string; link: string }[];
+}
+
+export async function issueVoterCredentials(
+  electionId: string
+): Promise<IssueVoterCredentialsResult> {
+  const response = await apiFetch(`/api/elections/${electionId}/voter-credentials/issue`, {
+    method: "POST",
+  });
+  return response.json();
+}
+
+export interface CandidateResult {
+  candidateId: string;
+  fullName: string;
+  voteCount: number;
+}
+
+export interface PortfolioResult {
+  portfolioId: string;
+  title: string;
+  candidates: CandidateResult[];
+  abstainCount: number;
+  totalBallots: number;
+}
+
+export interface ElectionResults {
+  electionId: string;
+  portfolios: PortfolioResult[];
+}
+
+export async function getElectionResults(electionId: string): Promise<ElectionResults> {
+  const response = await apiFetch(`/api/elections/${electionId}/results`);
+  return response.json();
+}
+
+// --- Voter-facing (public, no dashboard session) ---
+
+export interface VoteElectionSummary {
+  id: string;
+  title: string;
+  description: string | null;
+}
+
+export interface VoteTokenStatus {
+  status: "needs_verification" | "authenticated" | "voted" | "locked" | "invalid";
+  election?: VoteElectionSummary;
+  verificationColumns?: string[];
+}
+
+export async function getVoteTokenStatus(token: string): Promise<VoteTokenStatus> {
+  const response = await apiFetch(`/api/vote/${token}`);
+  return response.json();
+}
+
+export async function authenticateVoter(
+  token: string,
+  verification: Record<string, string>
+): Promise<void> {
+  await apiFetch(`/api/vote/${token}/authenticate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(verification),
+  });
+}
+
+export interface VoterBallot {
+  election: VoteElectionSummary;
+  portfolios: Portfolio[];
+}
+
+export async function getVoterBallot(electionId: string): Promise<VoterBallot> {
+  const params = new URLSearchParams({ electionId });
+  const response = await apiFetch(`/api/vote/ballot?${params.toString()}`);
+  return response.json();
+}
+
+export async function castVote(
+  electionId: string,
+  selections: Record<string, string | null>
+): Promise<void> {
+  await apiFetch(`/api/vote/cast`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ electionId, selections }),
+  });
 }

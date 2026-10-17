@@ -99,6 +99,11 @@ export default function ElectorateDatabasePage() {
         </p>
       ) : (
         <div className="overflow-x-auto border-t border-line">
+          {database.sensitiveColumns.length > 0 && (
+            <p className="py-2 text-sm text-ink-faint">
+              {database.sensitiveColumns.join(", ")} {database.sensitiveColumns.length === 1 ? "is" : "are"} hashed and shown masked below.
+            </p>
+          )}
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-line">
@@ -130,7 +135,7 @@ export default function ElectorateDatabasePage() {
       {uploadOpen && (
         <Modal title="Upload voters" onClose={() => setUploadOpen(false)}>
           <VoterUploadForm
-            databaseId={id}
+            database={database}
             onUploaded={() => {
               refresh();
             }}
