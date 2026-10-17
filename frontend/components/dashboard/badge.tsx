@@ -1,7 +1,7 @@
 const tone: Record<string, string> = {
-  ACTIVE: "bg-ink text-white",
-  PENDING_VERIFICATION: "bg-accent text-white",
-  DISABLED: "bg-page text-ink-muted",
+  ACTIVE: "bg-success text-white",
+  PENDING_VERIFICATION: "bg-warning text-white",
+  DISABLED: "bg-danger text-white",
 };
 
 const label: Record<string, string> = {
