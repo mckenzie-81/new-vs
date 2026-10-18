@@ -24,3 +24,90 @@ body {
   color: var(--color-ink);
   font-family: var(--font-sans), system-ui, sans-serif;
 }
+
+/* Shared enter motion for modals/sheets/dialogs - a panel that's merely
+   present reads as sudden; easing it in gives the eye a moment to follow
+   where it came from. Kept short (150-180ms) so it never feels like a
+   delay, just a cushioned arrival. */
+@keyframes overlay-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes panel-ease-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.overlay-fade-in {
+  animation: overlay-fade-in 150ms ease-out;
+}
+
+.panel-ease-in {
+  animation: panel-ease-in 180ms ease-out;
+}
+
+@keyframes sheet-slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes sheet-slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.sheet-slide-in-right {
+  animation: sheet-slide-in-right 200ms ease-out;
+}
+
+.sheet-slide-in-left {
+  animation: sheet-slide-in-left 200ms ease-out;
+}
+
+/* A smaller, quicker cousin of panel-ease-in for anchored dropdowns
+   (profile menu, quick search results) - these open far more often than a
+   modal does, so they stay in the 120-150ms micro-feedback band rather
+   than the 180ms+ band used for modals/sheets. */
+@keyframes dropdown-ease-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.dropdown-ease-in {
+  animation: dropdown-ease-in 120ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay-fade-in,
+  .panel-ease-in,
+  .sheet-slide-in-right,
+  .sheet-slide-in-left,
+  .dropdown-ease-in {
+    animation: none !important;
+  }
+}

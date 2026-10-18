@@ -1,18 +1,20 @@
 "use client";
 
-import { Election } from "@/lib/api";
+import { Election, AdminAssignment } from "@/lib/api";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
-import { BallotPreview } from "./ballot-preview";
+import { ElectionReview } from "./election-review";
 
 export function SubmitPreviewModal({
   election,
+  assignedAdmins,
   busy,
   error,
   onClose,
   onConfirm,
 }: {
   election: Election;
+  assignedAdmins: AdminAssignment[];
   busy: boolean;
   error?: string | null;
   onClose: () => void;
@@ -25,7 +27,7 @@ export function SubmitPreviewModal({
         it&apos;s approved or rejected.
       </p>
 
-      <BallotPreview election={election} />
+      <ElectionReview election={election} assignedAdmins={assignedAdmins} />
 
       {error && <p className="mt-4 text-sm text-danger">{error}</p>}
 

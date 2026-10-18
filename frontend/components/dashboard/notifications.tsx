@@ -12,7 +12,7 @@ export function Notifications() {
       <button
         aria-label="Notifications"
         onClick={() => setOpen(true)}
-        className="p-1.5 text-ink-muted hover:text-ink"
+        className="p-1.5 text-ink-muted transition-colors duration-150 hover:text-ink"
       >
         <BellIcon className="h-[18px] w-[18px]" />
       </button>

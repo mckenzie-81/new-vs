@@ -21,16 +21,17 @@ export function Sheet({
 
   const sideClasses =
     side === "right" ? "right-0 border-l border-line" : "left-0 border-r border-line";
+  const slideInClass = side === "right" ? "sheet-slide-in-right" : "sheet-slide-in-left";
 
   return (
     <div className={`fixed inset-0 z-40 ${className}`}>
       <button
         aria-label="Close"
-        className="absolute inset-0 bg-black/30"
+        className="overlay-fade-in absolute inset-0 bg-black/30"
         onClick={onClose}
       />
       <div
-        className={`absolute top-0 flex h-full flex-col bg-surface ${widthClassName} ${sideClasses}`}
+        className={`${slideInClass} absolute top-0 flex h-full flex-col bg-surface ${widthClassName} ${sideClasses}`}
       >
         {title && (
           <div className="flex items-center justify-between p-5">

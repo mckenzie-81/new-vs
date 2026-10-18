@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
+import { ChevronDownIcon } from "@heroicons/react/24/outline";
 import { navSections } from "./nav-items";
 import { Sheet } from "@/components/ui/sheet";
 
@@ -58,17 +58,31 @@ export function SidebarContent({
             <button
               onClick={() => toggleSection(section.title)}
               aria-expanded={!isCollapsed}
-              className="mb-1 flex w-full items-center justify-between text-xs font-semibold uppercase tracking-wide text-ink-faint hover:text-ink-muted"
+              className="mb-1 flex w-full items-center justify-between text-xs font-semibold uppercase tracking-wide text-ink-faint transition-colors duration-150 hover:text-ink-muted"
             >
               {section.title}
-              {isCollapsed ? (
-                <ChevronRightIcon className="h-3.5 w-3.5" />
-              ) : (
-                <ChevronDownIcon className="h-3.5 w-3.5" />
-              )}
+              <ChevronDownIcon
+                className={`h-3.5 w-3.5 shrink-0 transition-transform duration-150 ${
+                  isCollapsed ? "-rotate-90" : ""
+                }`}
+              />
             </button>
-            {!isCollapsed && (
-              <div className="flex flex-col">
+            <div
+              className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${
+                isCollapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"
+              }`}
+            >
+              <div
+                // Content stays mounted so the height transition above has
+                // something to measure - inert keeps it out of tab order
+                // and off-screen-reader while visually collapsed, matching
+                // what unmounting used to do for free.
+                inert={isCollapsed}
+                aria-hidden={isCollapsed}
+                className={`flex flex-col overflow-hidden transition-opacity duration-150 ${
+                  isCollapsed ? "opacity-0" : "opacity-100"
+                }`}
+              >
                 {section.items.map((item) => {
                   const Icon = item.icon;
                   const active = isActive(pathname, item.href);
@@ -77,7 +91,7 @@ export function SidebarContent({
                       key={item.href}
                       href={item.href}
                       onClick={onNavigate}
-                      className={`flex items-center gap-2.5 border-l-2 py-1.5 pl-3 text-sm ${
+                      className={`flex items-center gap-2.5 border-l-2 py-1.5 pl-3 text-sm transition-colors duration-150 ${
                         active
                           ? "border-ink font-semibold text-ink"
                           : "border-transparent text-ink-muted hover:text-ink"
@@ -89,7 +103,7 @@ export function SidebarContent({
                   );
                 })}
               </div>
-            )}
+            </div>
           </div>
         );
       })}

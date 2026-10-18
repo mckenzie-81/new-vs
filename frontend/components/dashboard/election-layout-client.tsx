@@ -24,6 +24,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Modal } from "@/components/ui/modal";
 import { RejectElectionForm } from "@/components/dashboard/reject-election-form";
 import { SubmitPreviewModal } from "@/components/dashboard/submit-preview-modal";
+import { ApprovalReviewModal } from "@/components/dashboard/approval-review-modal";
 import { ElectionForm } from "@/components/dashboard/election-form";
 
 function formatRange(startTime: string, endTime: string) {
@@ -56,7 +57,7 @@ export function ElectionLayoutClient({ children }: { children: React.ReactNode }
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [confirmApproveOpen, setConfirmApproveOpen] = useState(false);
+  const [approveReviewOpen, setApproveReviewOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [submitPreviewOpen, setSubmitPreviewOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -107,11 +108,11 @@ export function ElectionLayoutClient({ children }: { children: React.ReactNode }
     try {
       const updated = await approveElection(id);
       setElection(updated);
+      setApproveReviewOpen(false);
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Failed to approve.");
     } finally {
       setBusy(false);
-      setConfirmApproveOpen(false);
     }
   }
 
@@ -218,7 +219,7 @@ export function ElectionLayoutClient({ children }: { children: React.ReactNode }
             <SecondaryButton onClick={() => setRejectOpen(true)} disabled={busy} tone="danger">
               Reject
             </SecondaryButton>
-            <Button variant="accent" onClick={() => setConfirmApproveOpen(true)} disabled={busy} fullWidth={false}>
+            <Button variant="accent" onClick={() => setApproveReviewOpen(true)} disabled={busy} fullWidth={false}>
               Approve
             </Button>
           </div>
@@ -235,7 +236,7 @@ export function ElectionLayoutClient({ children }: { children: React.ReactNode }
             <Link
               key={tab.href}
               href={href}
-              className={`-mb-px border-b-2 pb-3 text-sm font-semibold ${
+              className={`-mb-px border-b-2 pb-3 text-sm font-semibold transition-colors duration-150 ${
                 active ? "border-accent text-ink" : "border-transparent text-ink-muted hover:text-ink"
               }`}
             >
@@ -258,15 +259,20 @@ export function ElectionLayoutClient({ children }: { children: React.ReactNode }
         onCancel={() => setConfirmDeleteOpen(false)}
       />
 
-      <ConfirmDialog
-        open={confirmApproveOpen}
-        title="Approve this election?"
-        description={`"${election.title}" will move to approved and can go live at its scheduled start time.`}
-        confirmLabel="Approve"
-        busy={busy}
-        onConfirm={handleApprove}
-        onCancel={() => setConfirmApproveOpen(false)}
-      />
+      {approveReviewOpen && (
+        <ApprovalReviewModal
+          election={election}
+          assignedAdmins={assignedAdmins}
+          busy={busy}
+          error={actionError}
+          onClose={() => setApproveReviewOpen(false)}
+          onApprove={handleApprove}
+          onReject={() => {
+            setApproveReviewOpen(false);
+            setRejectOpen(true);
+          }}
+        />
+      )}
 
       {rejectOpen && (
         <Modal title="Reject this election" onClose={() => setRejectOpen(false)}>
@@ -283,6 +289,7 @@ export function ElectionLayoutClient({ children }: { children: React.ReactNode }
       {submitPreviewOpen && (
         <SubmitPreviewModal
           election={election}
+          assignedAdmins={assignedAdmins}
           busy={busy}
           error={actionError}
           onClose={() => setSubmitPreviewOpen(false)}

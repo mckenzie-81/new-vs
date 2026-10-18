@@ -51,7 +51,7 @@ export function QuickSearch({ role }: { role: string }) {
       </div>
 
       {open && (
-        <div className="absolute left-0 right-0 top-full z-20 mt-1 border border-line bg-surface">
+        <div className="dropdown-ease-in absolute left-0 right-0 top-full z-20 mt-1 border border-line bg-surface">
           {results.length === 0 ? (
             <p className="p-3 text-sm text-ink-faint">No pages match &ldquo;{query}&rdquo;.</p>
           ) : (

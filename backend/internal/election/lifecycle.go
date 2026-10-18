@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 const maxRejectionReasonLength = 1000
@@ -14,6 +15,7 @@ var (
 	ErrPortfolioEmpty       = errors.New("every portfolio needs at least one candidate before submitting for approval")
 	ErrNoElectorateDatabase = errors.New("link an electorate database before submitting for approval")
 	ErrNoEligibleVoters     = errors.New("the linked electorate has no eligible voters - check the database and filter before submitting")
+	ErrElectionAlreadyEnded = errors.New("this election's end time has already passed - update the schedule before submitting")
 	ErrElectionNotClosed    = errors.New("only a closed election can be archived")
 	ErrNotPendingApproval   = errors.New("only an election awaiting approval can be approved or rejected")
 )
@@ -52,6 +54,14 @@ func (s *Service) SubmitForApproval(ctx context.Context, electionID string) (*El
 	}
 	if e.Status != "DRAFT" {
 		return nil, ErrElectionNotDraft
+	}
+
+	// An election whose window has already closed would skip LIVE entirely
+	// the moment it's approved, thanks to fixupLifecycle - approved, and
+	// un-votable, with nobody having had a chance to vote. Catch that here,
+	// before an approver even sees it, rather than discovering it after.
+	if !e.EndTime.After(time.Now()) {
+		return nil, ErrElectionAlreadyEnded
 	}
 
 	portfolios, err := s.ListPortfolios(ctx, electionID)
