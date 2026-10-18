@@ -128,7 +128,13 @@ export function PulseClient({ electionId }: { electionId: string }) {
         closes. Updated {new Date(snapshot.refreshedAt).toLocaleTimeString()}.
       </p>
 
-      <div className="mt-8 border-t border-line pt-6">
+      {(election.status === "CLOSED" || election.status === "ARCHIVED") && (
+        <div className="mt-8 border-t border-line pt-6">
+          <ResultsSection published={snapshot.resultsPublished} portfolios={snapshot.results} />
+        </div>
+      )}
+
+      <div className="mt-10 border-t border-line pt-6">
         <StatRow stats={stats} />
       </div>
 
@@ -139,12 +145,6 @@ export function PulseClient({ electionId }: { electionId: string }) {
       <div className="mt-10 border-t border-line pt-6">
         <AbstentionList portfolios={snapshot.portfolioAbstention} />
       </div>
-
-      {(election.status === "CLOSED" || election.status === "ARCHIVED") && (
-        <div className="mt-10 border-t border-line pt-6">
-          <ResultsSection published={snapshot.resultsPublished} portfolios={snapshot.results} />
-        </div>
-      )}
 
       {snapshot.scheduleChanges.length > 0 && (
         <div className="mt-10 border-t border-line pt-6">
