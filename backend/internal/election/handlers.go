@@ -799,6 +799,9 @@ func (h *Handler) approveElection(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, ErrNotPendingApproval):
 		httpx.Error(w, http.StatusConflict, err.Error())
 
+	case errors.Is(err, ErrElectionAlreadyEnded):
+		httpx.Error(w, http.StatusConflict, err.Error())
+
 	default:
 		log.Printf("approving election failed: %v", err)
 		httpx.Error(w, http.StatusInternalServerError, "failed to approve election")

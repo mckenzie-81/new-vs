@@ -110,6 +110,14 @@ func (s *Service) Approve(ctx context.Context, electionID, approverID string) (*
 		return nil, ErrNotPendingApproval
 	}
 
+	// Time can pass between submission and approval - long enough, in
+	// principle, for the window to have closed since. Same guard as
+	// SubmitForApproval, same reason: approving it now would send it
+	// straight to CLOSED on the next read, skipping LIVE entirely.
+	if !e.EndTime.After(time.Now()) {
+		return nil, ErrElectionAlreadyEnded
+	}
+
 	if _, err := s.pool.Exec(ctx, `
 		UPDATE elections SET status = 'APPROVED', approved_by = $2, rejection_reason = NULL, updated_at = now()
 		WHERE id = $1
