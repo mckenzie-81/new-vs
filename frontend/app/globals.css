@@ -102,48 +102,63 @@ body {
   animation: dropdown-ease-in 120ms ease-out;
 }
 
-/* A bright, fast shine sweeping across the "verifying" card - deliberately
-   bold (a visible glossy band, not a faint tint) so background activity
-   reads as unmistakable at a glance, not something you have to squint for. */
-@keyframes verify-sweep {
-  from {
-    background-position: -150% 0;
-  }
-  to {
-    background-position: 250% 0;
-  }
-}
-
-.verify-sweep {
-  background-image: linear-gradient(
-    100deg,
-    transparent 30%,
-    color-mix(in srgb, var(--color-accent) 55%, transparent) 48%,
-    color-mix(in srgb, var(--color-accent) 85%, white) 50%,
-    color-mix(in srgb, var(--color-accent) 55%, transparent) 52%,
-    transparent 70%
-  );
-  background-size: 250% 100%;
-  animation: verify-sweep 2s ease-in-out infinite;
-}
-
-/* The rotating ring badge paired with verify-sweep - a visible radar-style
-   scan, not a generic spinner (it never completes a full opaque rotation,
-   just a bright arc chasing itself around the ring). */
-@keyframes verify-scan {
+/* A soft, blurred aurora of color slowly turning behind the "verifying"
+   card - the premium version of a multi-color "working on it" signal: a
+   glow bleeding through around the edges of a solid content panel, not a
+   flat rainbow stripe stamped on top of it. The panel is a real nested
+   element (.verify-aurora-surface) rather than a z-index trick, so it
+   simply paints after the pseudo-element in normal DOM order. */
+@keyframes aurora-spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-.verify-scan {
-  animation: verify-scan 1.4s linear infinite;
+.verify-aurora {
+  position: relative;
+  overflow: hidden;
+}
+
+.verify-aurora::before {
+  content: "";
+  position: absolute;
+  inset: -40%;
   background: conic-gradient(
     from 0deg,
-    transparent 0%,
-    var(--color-accent) 25%,
-    transparent 50%
+    #ef4444,
+    #eab308,
+    #a855f7,
+    #3b82f6,
+    #22c55e,
+    #ef4444
   );
+  filter: blur(28px) saturate(115%);
+  animation: aurora-spin 9s linear infinite;
+}
+
+/* A small contained version of the same aurora for the badge icon next to
+   the heading - same slow turning glow, masked to a circle. */
+.verify-orb {
+  position: relative;
+  overflow: hidden;
+  border-radius: 9999px;
+}
+
+.verify-orb::before {
+  content: "";
+  position: absolute;
+  inset: -60%;
+  background: conic-gradient(
+    from 0deg,
+    #ef4444,
+    #eab308,
+    #a855f7,
+    #3b82f6,
+    #22c55e,
+    #ef4444
+  );
+  filter: blur(2px) saturate(115%);
+  animation: aurora-spin 2.6s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -152,8 +167,8 @@ body {
   .sheet-slide-in-right,
   .sheet-slide-in-left,
   .dropdown-ease-in,
-  .verify-scan,
-  .verify-sweep {
+  .verify-aurora::before,
+  .verify-orb::before {
     animation: none !important;
   }
 }
