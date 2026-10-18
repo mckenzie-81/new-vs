@@ -5,6 +5,8 @@ import Link from "next/link";
 import {
   getElectionElectorate,
   issueVoterCredentials,
+  updateElection,
+  electionToCreateInput,
   ApiError,
   ElectorateSummary,
   IssueVoterCredentialsResult,
@@ -12,22 +14,38 @@ import {
 import { useDashboardUser } from "@/components/dashboard/user-context";
 import { useElection } from "@/components/dashboard/election-context";
 import { AdminHeader } from "@/components/dashboard/admin-header";
-import { Button } from "@/components/ui/button";
+import { Button, SecondaryButton } from "@/components/ui/button";
+import { ElectorateSelector } from "@/components/dashboard/electorate-selector";
 
 export default function ElectionElectoratePage() {
   const user = useDashboardUser();
-  const { election } = useElection();
+  const { election, assignedAdmins, refresh } = useElection();
   const [summary, setSummary] = useState<ElectorateSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [issuing, setIssuing] = useState(false);
   const [issueError, setIssueError] = useState<string | null>(null);
   const [issueResult, setIssueResult] = useState<IssueVoterCredentialsResult | null>(null);
 
-  useEffect(() => {
+  const [editing, setEditing] = useState(false);
+  const [electorateDatabaseId, setElectorateDatabaseId] = useState(
+    election.electorateDatabaseId ?? ""
+  );
+  const [electorateFilter, setElectorateFilter] = useState<Record<string, string>>(
+    election.electorateFilter
+  );
+  const [voterVerificationColumns, setVoterVerificationColumns] = useState<string[]>(
+    election.voterVerificationColumns
+  );
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  function refreshSummary() {
     getElectionElectorate(election.id)
       .then(setSummary)
       .catch((err) => setError(err instanceof ApiError ? err.message : "Failed to load."));
-  }, [election.id]);
+  }
+
+  useEffect(refreshSummary, [election.id]);
 
   async function handleIssue() {
     setIssuing(true);
@@ -41,15 +59,84 @@ export default function ElectionElectoratePage() {
     }
   }
 
+  function startEditing() {
+    setElectorateDatabaseId(election.electorateDatabaseId ?? "");
+    setElectorateFilter(election.electorateFilter);
+    setVoterVerificationColumns(election.voterVerificationColumns);
+    setSaveError(null);
+    setEditing(true);
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaveError(null);
+    setSaving(true);
+    try {
+      await updateElection(election.id, {
+        ...electionToCreateInput(election),
+        electorateDatabaseId,
+        electorateFilter,
+        voterVerificationColumns,
+      });
+      setEditing(false);
+      refresh();
+      refreshSummary();
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : "Failed to save.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const canEdit =
+    election.status === "DRAFT" &&
+    (user.role === "SYSTEMADMIN" ||
+      (user.role === "ADMIN" && assignedAdmins.some((a) => a.userId === user.id)));
+
   const canIssue =
     (election.status === "APPROVED" || election.status === "LIVE") &&
     (user.role === "SYSTEMADMIN" || user.role === "ADMIN");
 
   const filterEntries = summary ? Object.entries(summary.filter) : [];
 
+  if (editing) {
+    return (
+      <div>
+        <AdminHeader title="Electorate" intro="Who's eligible to vote in this election." />
+        <form onSubmit={handleSave} className="flex flex-col gap-4 border-t border-line pt-6">
+          <ElectorateSelector
+            databaseId={electorateDatabaseId}
+            filter={electorateFilter}
+            verificationColumns={voterVerificationColumns}
+            onDatabaseChange={setElectorateDatabaseId}
+            onFilterChange={setElectorateFilter}
+            onVerificationColumnsChange={setVoterVerificationColumns}
+          />
+
+          {saveError && <p className="text-sm text-danger">{saveError}</p>}
+
+          <div className="flex gap-3">
+            <SecondaryButton type="button" onClick={() => setEditing(false)} disabled={saving}>
+              Cancel
+            </SecondaryButton>
+            <Button type="submit" fullWidth={false} disabled={saving}>
+              {saving ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <AdminHeader title="Electorate" intro="Who's eligible to vote in this election." />
+      <AdminHeader
+        title="Electorate"
+        intro="Who's eligible to vote in this election."
+        actions={
+          canEdit ? <SecondaryButton onClick={startEditing}>Edit</SecondaryButton> : undefined
+        }
+      />
 
       {error && <p className="text-sm text-danger">{error}</p>}
 
@@ -58,8 +145,7 @@ export default function ElectionElectoratePage() {
       {summary && !summary.linked && (
         <p className="py-10 text-sm text-ink-faint">
           No electorate database linked yet.
-          {election.status === "DRAFT" &&
-            " Use the edit button on this election to add one before submitting for approval."}
+          {canEdit && " Use the edit button above to add one before submitting for approval."}
         </p>
       )}
 
@@ -106,6 +192,17 @@ export default function ElectionElectoratePage() {
               </ul>
             )}
           </div>
+
+          {election.voterVerificationColumns.length > 0 && (
+            <div className="mt-6">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                Voter verification
+              </p>
+              <p className="mt-1 text-sm text-ink-muted">
+                {election.voterVerificationColumns.join(", ")}
+              </p>
+            </div>
+          )}
 
           {canIssue && (
             <div className="mt-8 border-t border-line pt-6">

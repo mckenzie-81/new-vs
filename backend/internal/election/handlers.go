@@ -112,6 +112,7 @@ type createRequest struct {
 	VoterVerificationColumns []string          `json:"voterVerificationColumns"`
 	AccentColor              string            `json:"accentColor"`
 	LogoURL                  string            `json:"logoUrl"`
+	BallotStyle              string            `json:"ballotStyle"`
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -155,6 +156,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		VoterVerificationColumns: req.VoterVerificationColumns,
 		AccentColor:              req.AccentColor,
 		LogoURL:                  req.LogoURL,
+		BallotStyle:              req.BallotStyle,
 	})
 
 	switch {
@@ -218,6 +220,7 @@ func (h *Handler) updateElection(w http.ResponseWriter, r *http.Request) {
 		VoterVerificationColumns: req.VoterVerificationColumns,
 		AccentColor:              req.AccentColor,
 		LogoURL:                  req.LogoURL,
+		BallotStyle:              req.BallotStyle,
 	})
 
 	switch {

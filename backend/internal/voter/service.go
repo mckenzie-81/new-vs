@@ -160,6 +160,7 @@ type ElectionSummary struct {
 	EndTime     time.Time `json:"endTime"`
 	AccentColor *string   `json:"accentColor"`
 	LogoURL     *string   `json:"logoUrl"`
+	BallotStyle string    `json:"ballotStyle"`
 }
 
 type TokenStatus struct {
@@ -202,7 +203,7 @@ func (s *Service) GetTokenStatus(ctx context.Context, rawToken string) (*TokenSt
 	}
 	summary := &ElectionSummary{
 		ID: e.ID, Title: e.Title, Description: e.Description, StartTime: e.StartTime, EndTime: e.EndTime,
-		AccentColor: e.AccentColor, LogoURL: e.LogoURL,
+		AccentColor: e.AccentColor, LogoURL: e.LogoURL, BallotStyle: e.BallotStyle,
 	}
 
 	switch status {
@@ -406,7 +407,7 @@ func (s *Service) GetBallot(ctx context.Context, rawToken string) (*BallotResult
 	return &BallotResult{
 		Election: ElectionSummary{
 			ID: e.ID, Title: e.Title, Description: e.Description, StartTime: e.StartTime, EndTime: e.EndTime,
-			AccentColor: e.AccentColor, LogoURL: e.LogoURL,
+			AccentColor: e.AccentColor, LogoURL: e.LogoURL, BallotStyle: e.BallotStyle,
 		},
 		Portfolios: portfolios,
 	}, nil

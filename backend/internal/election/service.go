@@ -46,6 +46,7 @@ type Election struct {
 	VoterVerificationColumns []string          `json:"voterVerificationColumns"`
 	AccentColor              *string           `json:"accentColor"`
 	LogoURL                  *string           `json:"logoUrl"`
+	BallotStyle              string            `json:"ballotStyle"`
 	CreatedAt                time.Time         `json:"createdAt"`
 	UpdatedAt                time.Time         `json:"updatedAt"`
 }
@@ -60,7 +61,19 @@ type CreateInput struct {
 	VoterVerificationColumns []string
 	AccentColor              string
 	LogoURL                  string
+	BallotStyle              string
 }
+
+// BallotStyles are the currently-supported ways a ballot's candidates can
+// be laid out. Deliberately a plain Go map, not a DB enum/CHECK constraint -
+// this is expected to grow as more layouts get designed, and a Go-only
+// change is far lighter than a migration every time one is added.
+var BallotStyles = map[string]bool{
+	"compact": true, // a dense row per candidate - small photo, name beside it
+	"cards":   true, // a two-column grid of taller candidate cards
+}
+
+const DefaultBallotStyle = "compact"
 
 const maxVerificationColumns = 2
 
@@ -76,6 +89,7 @@ type validatedInput struct {
 	verificationColumns  []string
 	accentColor          *string
 	logoURL              *string
+	ballotStyle          string
 }
 
 // validateElectionInput checks the fields every election needs regardless
@@ -180,6 +194,13 @@ func (s *Service) validateElectionInput(ctx context.Context, in CreateInput) (*v
 		logoURL = &trimmed
 	}
 
+	ballotStyle := strings.TrimSpace(in.BallotStyle)
+	if ballotStyle == "" {
+		ballotStyle = DefaultBallotStyle
+	} else if !BallotStyles[ballotStyle] {
+		return nil, fmt.Errorf("%w: %q isn't a known ballot style", ErrInvalidInput, ballotStyle)
+	}
+
 	return &validatedInput{
 		title:                title,
 		description:          description,
@@ -188,6 +209,7 @@ func (s *Service) validateElectionInput(ctx context.Context, in CreateInput) (*v
 		verificationColumns:  verificationColumns,
 		accentColor:          accentColor,
 		logoURL:              logoURL,
+		ballotStyle:          ballotStyle,
 	}, nil
 }
 
@@ -208,14 +230,14 @@ func (s *Service) Create(ctx context.Context, actorID string, in CreateInput) (*
 
 	var e Election
 	err = s.pool.QueryRow(ctx, `
-		INSERT INTO elections (title, description, start_time, end_time, created_by, electorate_database_id, electorate_filter, voter_verification_columns, accent_color, logo_url)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO elections (title, description, start_time, end_time, created_by, electorate_database_id, electorate_filter, voter_verification_columns, accent_color, logo_url, ballot_style)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING id, title, description, status, start_time, end_time, created_by, approved_by, rejection_reason,
-			electorate_database_id, COALESCE(electorate_filter, '{}'::jsonb), voter_verification_columns, accent_color, logo_url, created_at, updated_at
-	`, v.title, v.description, in.StartTime, in.EndTime, actorID, v.electorateDatabaseID, v.filter, v.verificationColumns, v.accentColor, v.logoURL).Scan(
+			electorate_database_id, COALESCE(electorate_filter, '{}'::jsonb), voter_verification_columns, accent_color, logo_url, ballot_style, created_at, updated_at
+	`, v.title, v.description, in.StartTime, in.EndTime, actorID, v.electorateDatabaseID, v.filter, v.verificationColumns, v.accentColor, v.logoURL, v.ballotStyle).Scan(
 		&e.ID, &e.Title, &e.Description, &e.Status, &e.StartTime, &e.EndTime,
 		&e.CreatedBy, &e.ApprovedBy, &e.RejectionReason,
-		&e.ElectorateDatabaseID, &e.ElectorateFilter, &e.VoterVerificationColumns, &e.AccentColor, &e.LogoURL, &e.CreatedAt, &e.UpdatedAt,
+		&e.ElectorateDatabaseID, &e.ElectorateFilter, &e.VoterVerificationColumns, &e.AccentColor, &e.LogoURL, &e.BallotStyle, &e.CreatedAt, &e.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating election: %w", err)
@@ -246,14 +268,14 @@ func (s *Service) Update(ctx context.Context, electionID string, in CreateInput)
 		UPDATE elections
 		SET title = $1, description = $2, start_time = $3, end_time = $4,
 			electorate_database_id = $5, electorate_filter = $6, voter_verification_columns = $7,
-			accent_color = $8, logo_url = $9, updated_at = now()
-		WHERE id = $10
+			accent_color = $8, logo_url = $9, ballot_style = $10, updated_at = now()
+		WHERE id = $11
 		RETURNING id, title, description, status, start_time, end_time, created_by, approved_by, rejection_reason,
-			electorate_database_id, COALESCE(electorate_filter, '{}'::jsonb), voter_verification_columns, accent_color, logo_url, created_at, updated_at
-	`, v.title, v.description, in.StartTime, in.EndTime, v.electorateDatabaseID, v.filter, v.verificationColumns, v.accentColor, v.logoURL, electionID).Scan(
+			electorate_database_id, COALESCE(electorate_filter, '{}'::jsonb), voter_verification_columns, accent_color, logo_url, ballot_style, created_at, updated_at
+	`, v.title, v.description, in.StartTime, in.EndTime, v.electorateDatabaseID, v.filter, v.verificationColumns, v.accentColor, v.logoURL, v.ballotStyle, electionID).Scan(
 		&updated.ID, &updated.Title, &updated.Description, &updated.Status, &updated.StartTime, &updated.EndTime,
 		&updated.CreatedBy, &updated.ApprovedBy, &updated.RejectionReason,
-		&updated.ElectorateDatabaseID, &updated.ElectorateFilter, &updated.VoterVerificationColumns, &updated.AccentColor, &updated.LogoURL, &updated.CreatedAt, &updated.UpdatedAt,
+		&updated.ElectorateDatabaseID, &updated.ElectorateFilter, &updated.VoterVerificationColumns, &updated.AccentColor, &updated.LogoURL, &updated.BallotStyle, &updated.CreatedAt, &updated.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("updating election: %w", err)
@@ -272,7 +294,7 @@ func (s *Service) List(ctx context.Context) ([]Election, error) {
 
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, title, description, status, start_time, end_time, created_by, approved_by, rejection_reason,
-			electorate_database_id, COALESCE(electorate_filter, '{}'::jsonb), voter_verification_columns, accent_color, logo_url, created_at, updated_at
+			electorate_database_id, COALESCE(electorate_filter, '{}'::jsonb), voter_verification_columns, accent_color, logo_url, ballot_style, created_at, updated_at
 		FROM elections
 		ORDER BY created_at DESC
 	`)
@@ -287,7 +309,7 @@ func (s *Service) List(ctx context.Context) ([]Election, error) {
 		if err := rows.Scan(
 			&e.ID, &e.Title, &e.Description, &e.Status, &e.StartTime, &e.EndTime,
 			&e.CreatedBy, &e.ApprovedBy, &e.RejectionReason,
-			&e.ElectorateDatabaseID, &e.ElectorateFilter, &e.VoterVerificationColumns, &e.AccentColor, &e.LogoURL, &e.CreatedAt, &e.UpdatedAt,
+			&e.ElectorateDatabaseID, &e.ElectorateFilter, &e.VoterVerificationColumns, &e.AccentColor, &e.LogoURL, &e.BallotStyle, &e.CreatedAt, &e.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scanning election: %w", err)
 		}
@@ -308,13 +330,13 @@ func (s *Service) Get(ctx context.Context, id string) (*Election, error) {
 	var e Election
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, title, description, status, start_time, end_time, created_by, approved_by, rejection_reason,
-			electorate_database_id, COALESCE(electorate_filter, '{}'::jsonb), voter_verification_columns, accent_color, logo_url, created_at, updated_at
+			electorate_database_id, COALESCE(electorate_filter, '{}'::jsonb), voter_verification_columns, accent_color, logo_url, ballot_style, created_at, updated_at
 		FROM elections
 		WHERE id = $1
 	`, id).Scan(
 		&e.ID, &e.Title, &e.Description, &e.Status, &e.StartTime, &e.EndTime,
 		&e.CreatedBy, &e.ApprovedBy, &e.RejectionReason,
-		&e.ElectorateDatabaseID, &e.ElectorateFilter, &e.VoterVerificationColumns, &e.AccentColor, &e.LogoURL, &e.CreatedAt, &e.UpdatedAt,
+		&e.ElectorateDatabaseID, &e.ElectorateFilter, &e.VoterVerificationColumns, &e.AccentColor, &e.LogoURL, &e.BallotStyle, &e.CreatedAt, &e.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound

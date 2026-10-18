@@ -1,52 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { listPortfolios, candidateTicketName, Election, Portfolio, Candidate } from "@/lib/api";
+import { listPortfolios, candidateTicketName, Election, Portfolio } from "@/lib/api";
 import { Modal } from "@/components/ui/modal";
 import { Button, SecondaryButton } from "@/components/ui/button";
+import { CandidateOption, candidateListClassName } from "@/components/ballot/candidate-option";
 
 type Selections = Record<string, string>;
-
-function CandidateOption({
-  number,
-  candidate,
-  selected,
-  onSelect,
-}: {
-  number: number;
-  candidate: Candidate;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      onClick={onSelect}
-      className={`flex w-full items-center gap-4 border p-3 text-left ${
-        selected ? "border-accent bg-accent-soft" : "border-line hover:border-ink"
-      }`}
-    >
-      <span className="w-6 shrink-0 text-center text-base font-semibold text-ink-faint">
-        {number}
-      </span>
-      {candidate.photoUrl ? (
-        // next/image needs a fixed set of allowed hosts; the host here
-        // isn't decided yet (Cloudinary vs. our own backend), so a plain
-        // img tag avoids hardcoding one prematurely.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={candidate.photoUrl}
-          alt=""
-          className="h-20 w-20 shrink-0 bg-page object-cover"
-        />
-      ) : (
-        <div className="flex h-20 w-20 shrink-0 items-center justify-center bg-page text-2xl font-semibold text-ink-faint">
-          {candidate.fullName.trim().charAt(0).toUpperCase() || "?"}
-        </div>
-      )}
-      <span className="text-lg font-medium text-ink">{candidateTicketName(candidate)}</span>
-    </button>
-  );
-}
 
 export function VoterPreviewModal({
   election,
@@ -75,6 +35,14 @@ export function VoterPreviewModal({
       } else {
         next[portfolioId] = candidateId;
       }
+      return next;
+    });
+  }
+
+  function resetPortfolio(portfolioId: string) {
+    setSelections((prev) => {
+      const next = { ...prev };
+      delete next[portfolioId];
       return next;
     });
   }
@@ -129,18 +97,31 @@ export function VoterPreviewModal({
       <div className="max-h-[55vh] overflow-y-auto">
         {portfolios?.map((p) => (
           <div key={p.id} className="border-t border-line py-5 first:border-t-0">
-            <h3 className="text-xl font-semibold text-ink">{p.title}</h3>
-            <p className="mt-0.5 text-sm text-ink-faint">
-              Tap a candidate to select them. Tap again, or leave blank, to abstain.
-            </p>
-            <div className="mt-4 flex flex-col gap-2">
-              {p.candidates.map((c, index) => (
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-xl font-semibold text-ink">{p.title}</h3>
+                <p className="mt-0.5 text-sm text-ink-faint">
+                  Select one candidate, or leave blank to abstain.
+                </p>
+              </div>
+              {selections[p.id] && (
+                <button
+                  type="button"
+                  onClick={() => resetPortfolio(p.id)}
+                  className="shrink-0 text-sm font-semibold text-ink-faint transition-colors duration-150 hover:text-danger"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+            <div className={candidateListClassName(election.ballotStyle)}>
+              {p.candidates.map((c) => (
                 <CandidateOption
                   key={c.id}
-                  number={index + 1}
                   candidate={c}
                   selected={selections[p.id] === c.id}
                   onSelect={() => choose(p.id, c.id)}
+                  style={election.ballotStyle}
                 />
               ))}
             </div>

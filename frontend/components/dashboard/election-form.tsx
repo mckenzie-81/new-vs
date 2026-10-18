@@ -1,12 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ApiError, createElection, updateElection, Election } from "@/lib/api";
+import { ApiError, createElection, updateElection, electionToCreateInput, Election } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
-import { ElectorateSelector } from "./electorate-selector";
-import { BrandingFields } from "@/components/branding/branding-fields";
 
 // datetime-local inputs need "YYYY-MM-DDTHH:mm" in the browser's local
 // time - this reverses the ISO string we get back from the server into
@@ -17,6 +15,11 @@ function toLocalInputValue(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// Deliberately just name and timeline - everything else an election can
+// have (electorate, branding, ballot style, description) is configured
+// separately, on its own tab, once the election exists. Keeps creating an
+// election fast, and keeps a long list of optional settings from being
+// the first thing in the way of the one thing every election needs.
 export function ElectionForm({
   election,
   onSaved,
@@ -25,22 +28,10 @@ export function ElectionForm({
   onSaved: () => void;
 }) {
   const [title, setTitle] = useState(election?.title ?? "");
-  const [description, setDescription] = useState(election?.description ?? "");
   const [startTime, setStartTime] = useState(
     election ? toLocalInputValue(election.startTime) : ""
   );
   const [endTime, setEndTime] = useState(election ? toLocalInputValue(election.endTime) : "");
-  const [electorateDatabaseId, setElectorateDatabaseId] = useState(
-    election?.electorateDatabaseId ?? ""
-  );
-  const [electorateFilter, setElectorateFilter] = useState<Record<string, string>>(
-    election?.electorateFilter ?? {}
-  );
-  const [voterVerificationColumns, setVoterVerificationColumns] = useState<string[]>(
-    election?.voterVerificationColumns ?? []
-  );
-  const [accentColor, setAccentColor] = useState(election?.accentColor ?? "");
-  const [logoUrl, setLogoUrl] = useState(election?.logoUrl ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,15 +51,10 @@ export function ElectionForm({
     }
 
     const payload = {
+      ...(election ? electionToCreateInput(election) : emptyElectionInput()),
       title,
-      description,
       startTime: startISO,
       endTime: endISO,
-      electorateDatabaseId,
-      electorateFilter,
-      voterVerificationColumns,
-      accentColor,
-      logoUrl,
     };
 
     setSubmitting(true);
@@ -96,14 +82,6 @@ export function ElectionForm({
         />
       </Field>
 
-      <Field label="Description" htmlFor="election-description" hint="Optional">
-        <Input
-          id="election-description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-      </Field>
-
       <div className="grid grid-cols-2 gap-4">
         <Field label="Starts" htmlFor="election-start">
           <Input
@@ -126,42 +104,6 @@ export function ElectionForm({
         </Field>
       </div>
 
-      <ElectorateSelector
-        databaseId={electorateDatabaseId}
-        filter={electorateFilter}
-        verificationColumns={voterVerificationColumns}
-        onDatabaseChange={setElectorateDatabaseId}
-        onFilterChange={setElectorateFilter}
-        onVerificationColumnsChange={setVoterVerificationColumns}
-      />
-
-      <div>
-        <p className="text-sm font-semibold text-ink">Branding</p>
-        <p className="mt-1 text-sm text-ink-muted">
-          Optional - leave blank to use the system default.
-        </p>
-        <div className="mt-3">
-          <BrandingFields
-            accentColor={accentColor}
-            logoUrl={logoUrl}
-            onAccentColorChange={setAccentColor}
-            onLogoUrlChange={setLogoUrl}
-          />
-        </div>
-        {(accentColor || logoUrl) && (
-          <button
-            type="button"
-            onClick={() => {
-              setAccentColor("");
-              setLogoUrl("");
-            }}
-            className="mt-2 text-sm font-semibold text-accent hover:underline"
-          >
-            Use system default
-          </button>
-        )}
-      </div>
-
       {error && <p className="text-sm text-danger">{error}</p>}
 
       <Button type="submit" disabled={submitting} className="mt-1">
@@ -169,4 +111,19 @@ export function ElectionForm({
       </Button>
     </form>
   );
+}
+
+function emptyElectionInput() {
+  return {
+    title: "",
+    description: "",
+    startTime: "",
+    endTime: "",
+    electorateDatabaseId: "",
+    electorateFilter: {},
+    voterVerificationColumns: [],
+    accentColor: "",
+    logoUrl: "",
+    ballotStyle: "",
+  };
 }

@@ -149,6 +149,7 @@ export interface Election {
   voterVerificationColumns: string[];
   accentColor: string | null;
   logoUrl: string | null;
+  ballotStyle: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -163,6 +164,28 @@ export interface CreateElectionInput {
   voterVerificationColumns: string[];
   accentColor: string;
   logoUrl: string;
+  ballotStyle: string;
+}
+
+// Every update goes through one full-shape endpoint, but the UI is split
+// across several small forms (basics, electorate, settings) that each only
+// let an admin change their own slice. This builds a baseline payload from
+// the election as it stands today, so a form that edits one slice never
+// accidentally blanks out another - a caller overrides only the fields its
+// own form actually exposes.
+export function electionToCreateInput(election: Election): CreateElectionInput {
+  return {
+    title: election.title,
+    description: election.description ?? "",
+    startTime: election.startTime,
+    endTime: election.endTime,
+    electorateDatabaseId: election.electorateDatabaseId ?? "",
+    electorateFilter: election.electorateFilter,
+    voterVerificationColumns: election.voterVerificationColumns,
+    accentColor: election.accentColor ?? "",
+    logoUrl: election.logoUrl ?? "",
+    ballotStyle: election.ballotStyle,
+  };
 }
 
 export async function createElection(input: CreateElectionInput): Promise<Election> {
@@ -212,6 +235,23 @@ export interface Candidate {
 export function candidateTicketName(candidate: Pick<Candidate, "fullName" | "runningMates">) {
   return [candidate.fullName, ...candidate.runningMates].join(" & ");
 }
+
+// Mirrors the backend's election.BallotStyles - the set of ballot layouts
+// an election can choose between. A plain list, not an enum, since this is
+// expected to grow as more layouts get designed.
+export const BALLOT_STYLES: { value: string; label: string; description: string }[] = [
+  {
+    value: "compact",
+    label: "Compact list",
+    description: "A dense row per candidate - small photo, name beside it. Good for long lists.",
+  },
+  {
+    value: "cards",
+    label: "Cards",
+    description: "A two-column grid of taller candidate cards with a bigger photo.",
+  },
+];
+export const DEFAULT_BALLOT_STYLE = "compact";
 
 export interface Portfolio {
   id: string;
@@ -577,6 +617,7 @@ export interface VoteElectionSummary {
   endTime: string;
   accentColor: string | null;
   logoUrl: string | null;
+  ballotStyle: string;
 }
 
 export interface VoteTokenStatus {
