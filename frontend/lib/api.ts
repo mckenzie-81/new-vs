@@ -585,6 +585,7 @@ export async function issueVoterCredentials(
 export interface CandidateResult {
   candidateId: string;
   fullName: string;
+  photoUrl: string | null;
   runningMates: string[];
   voteCount: number;
 }

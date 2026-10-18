@@ -25,11 +25,11 @@ function SelectionBadge({ selected, size }: { selected: boolean; size: "sm" | "m
   );
 }
 
-function CandidatePhoto({
+export function CandidatePhoto({
   candidate,
   className,
 }: {
-  candidate: Candidate;
+  candidate: Pick<Candidate, "photoUrl" | "fullName">;
   className: string;
 }) {
   if (candidate.photoUrl) {

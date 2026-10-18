@@ -519,6 +519,7 @@ func (s *Service) CastVote(ctx context.Context, rawToken string, selections map[
 type CandidateResult struct {
 	CandidateID  string   `json:"candidateId"`
 	FullName     string   `json:"fullName"`
+	PhotoURL     *string  `json:"photoUrl"`
 	RunningMates []string `json:"runningMates"`
 	VoteCount    int      `json:"voteCount"`
 }
@@ -591,7 +592,7 @@ func (s *Service) GetResults(ctx context.Context, electionID string) (*Results, 
 		for _, c := range p.Candidates {
 			count := counts[p.ID][c.ID]
 			pr.Candidates = append(pr.Candidates, CandidateResult{
-				CandidateID: c.ID, FullName: c.FullName, RunningMates: c.RunningMates, VoteCount: count,
+				CandidateID: c.ID, FullName: c.FullName, PhotoURL: c.PhotoURL, RunningMates: c.RunningMates, VoteCount: count,
 			})
 			total += count
 		}
