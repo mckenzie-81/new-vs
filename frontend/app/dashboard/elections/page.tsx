@@ -66,12 +66,11 @@ export default function ElectionsPage() {
           onClose={() => setCreateOpen(false)}
           closeOnOverlayClick={false}
         >
-          <ElectionForm
-            onSaved={() => {
-              setCreateOpen(false);
-              refresh();
-            }}
-          />
+          {/* onSaved only refreshes the list in the background - the form
+              itself shows a "what next" confirmation after a successful
+              create and decides when to actually navigate away, rather
+              than this modal closing out from under the admin. */}
+          <ElectionForm onSaved={refresh} />
         </Modal>
       )}
     </div>

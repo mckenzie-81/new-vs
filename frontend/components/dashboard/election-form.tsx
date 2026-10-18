@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { ApiError, createElection, updateElection, electionToCreateInput, Election } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +28,7 @@ export function ElectionForm({
   election?: Election;
   onSaved: () => void;
 }) {
+  const router = useRouter();
   const [title, setTitle] = useState(election?.title ?? "");
   const [startTime, setStartTime] = useState(
     election ? toLocalInputValue(election.startTime) : ""
@@ -34,6 +36,11 @@ export function ElectionForm({
   const [endTime, setEndTime] = useState(election ? toLocalInputValue(election.endTime) : "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Only set after creating a brand new election (never on an edit) - its
+  // presence switches this form over to the "what next" confirmation
+  // below instead of closing out from under the admin. Editing still
+  // closes on save as before; there's no "what next" for an edit.
+  const [created, setCreated] = useState<Election | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -61,14 +68,34 @@ export function ElectionForm({
     try {
       if (election) {
         await updateElection(election.id, payload);
+        onSaved();
       } else {
-        await createElection(payload);
+        const result = await createElection(payload);
+        setCreated(result);
+        onSaved();
       }
-      onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
       setSubmitting(false);
     }
+  }
+
+  if (created) {
+    return (
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-ink">
+          <span className="font-semibold">&ldquo;{created.title}&rdquo;</span> was created as a
+          draft.
+        </p>
+        <p className="text-sm text-ink-muted">
+          Next, set up its electorate, ballot, and branding from its own page - or close this and
+          do it later.
+        </p>
+        <Button onClick={() => router.push(`/dashboard/elections/${created.id}`)} className="mt-1">
+          Continue to manage
+        </Button>
+      </div>
+    );
   }
 
   return (

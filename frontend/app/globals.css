@@ -19,6 +19,18 @@
   --font-sans: var(--font-plex-sans);
 }
 
+:root {
+  /* A weightier decelerate than the browser's own ease-out - used for
+     motion where a bounce would read as excessive (backdrops fading in,
+     full sheets sliding over). */
+  --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
+  /* A restrained overshoot - settles a few percent past its resting place
+     before easing back, rather than stopping dead on arrival. Reserved
+     for small, frequent "arrivals" (modal panels, dropdowns) where that
+     last bit of motion reads as polish, not play. */
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
 body {
   background: var(--color-page);
   color: var(--color-ink);
@@ -50,11 +62,11 @@ body {
 }
 
 .overlay-fade-in {
-  animation: overlay-fade-in 150ms ease-out;
+  animation: overlay-fade-in 150ms var(--ease-smooth);
 }
 
 .panel-ease-in {
-  animation: panel-ease-in 180ms ease-out;
+  animation: panel-ease-in 220ms var(--ease-bounce);
 }
 
 @keyframes sheet-slide-in-right {
@@ -76,11 +88,11 @@ body {
 }
 
 .sheet-slide-in-right {
-  animation: sheet-slide-in-right 200ms ease-out;
+  animation: sheet-slide-in-right 240ms var(--ease-smooth);
 }
 
 .sheet-slide-in-left {
-  animation: sheet-slide-in-left 200ms ease-out;
+  animation: sheet-slide-in-left 240ms var(--ease-smooth);
 }
 
 /* A smaller, quicker cousin of panel-ease-in for anchored dropdowns
@@ -99,7 +111,7 @@ body {
 }
 
 .dropdown-ease-in {
-  animation: dropdown-ease-in 120ms ease-out;
+  animation: dropdown-ease-in 160ms var(--ease-bounce);
 }
 
 /* A soft, blurred aurora of color slowly turning behind the "verifying"
