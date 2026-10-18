@@ -745,3 +745,38 @@ export async function updateBranding(
   });
   return response.json();
 }
+
+// --- File uploads (candidate photos, logos) ---
+
+export type UploadKind = "candidate-photos" | "logos";
+
+export interface PresignedUpload {
+  uploadUrl: string;
+  publicUrl: string;
+}
+
+async function presignUpload(kind: UploadKind, contentType: string): Promise<PresignedUpload> {
+  const response = await apiFetch("/api/uploads/presign", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind, contentType }),
+  });
+  return response.json();
+}
+
+// uploadFile gets a presigned URL from our backend, then PUTs the file
+// straight to R2 with a plain fetch (no credentials, no API base URL -
+// it's a different origin entirely) so the file itself never passes
+// through our own server.
+export async function uploadFile(kind: UploadKind, file: File): Promise<string> {
+  const { uploadUrl, publicUrl } = await presignUpload(kind, file.type);
+  const response = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": file.type },
+    body: file,
+  });
+  if (!response.ok) {
+    throw new ApiError(response.status, "Upload failed. Please try again.");
+  }
+  return publicUrl;
+}

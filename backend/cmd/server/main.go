@@ -14,6 +14,7 @@ import (
 	"backend/internal/electorate"
 	"backend/internal/httpx"
 	"backend/internal/pulse"
+	"backend/internal/storage"
 	"backend/internal/voter"
 )
 
@@ -56,6 +57,12 @@ func main() {
 	brandingService := branding.NewService(pool)
 	brandingHandler := branding.NewHandler(brandingService, authService)
 
+	storageService := storage.NewService(cfg)
+	storageHandler := storage.NewHandler(storageService, authService)
+	if storageService == nil {
+		log.Printf("uploads disabled: R2 isn't configured (set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_BASE_URL)")
+	}
+
 	mux := http.NewServeMux()
 	bootstrapHandler.Register(mux)
 	authHandler.Register(mux)
@@ -64,6 +71,7 @@ func main() {
 	voterHandler.Register(mux)
 	pulseHandler.Register(mux)
 	brandingHandler.Register(mux)
+	storageHandler.Register(mux)
 
 	handler := httpx.CORS(cfg.AppBaseURL, mux)
 

@@ -5,6 +5,7 @@ import { ApiError, createCandidate, updateCandidate, Candidate } from "@/lib/api
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
+import { ImageUpload } from "@/components/ui/image-upload";
 
 export function CandidateForm({
   electionId,
@@ -66,25 +67,15 @@ export function CandidateForm({
         />
       </Field>
 
-      {/*
-        TEMPORARY: this should be a device file-picker upload, not a pasted
-        URL - confirmed explicitly, not just left this way by default. It's
-        a URL field only because the storage mechanism (Cloudinary vs. our
-        own backend) isn't decided yet. The `photoUrl` string this produces
-        is the real data model either way, so swapping this input for a
-        real upload widget later won't need backend changes.
-      */}
-      <Field
-        label="Photo URL"
-        htmlFor="candidate-photo"
-        hint="Paste a link to an image. Optional. (Placeholder - will become a file upload.)"
-      >
-        <Input
-          id="candidate-photo"
-          type="url"
-          value={photoUrl}
-          onChange={(e) => setPhotoUrl(e.target.value)}
-        />
+      <Field label="Photo" htmlFor="candidate-photo" hint="Optional.">
+        <div className="mt-1">
+          <ImageUpload
+            id="candidate-photo"
+            kind="candidate-photos"
+            value={photoUrl}
+            onChange={setPhotoUrl}
+          />
+        </div>
       </Field>
 
       <div>

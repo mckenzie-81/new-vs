@@ -2,6 +2,7 @@
 
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
+import { ImageUpload } from "@/components/ui/image-upload";
 
 const FALLBACK_SWATCH = "#2e4e8f";
 
@@ -39,16 +40,13 @@ export function BrandingFields({
       </Field>
 
       <Field
-        label="Logo URL"
+        label="Logo"
         htmlFor="brand-logo-url"
         hint="Shown on the ballot and the public pulse page."
       >
-        <Input
-          id="brand-logo-url"
-          placeholder="https://..."
-          value={logoUrl}
-          onChange={(e) => onLogoUrlChange(e.target.value)}
-        />
+        <div className="mt-1">
+          <ImageUpload id="brand-logo-url" kind="logos" value={logoUrl} onChange={onLogoUrlChange} />
+        </div>
       </Field>
     </div>
   );
