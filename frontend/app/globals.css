@@ -102,12 +102,58 @@ body {
   animation: dropdown-ease-in 120ms ease-out;
 }
 
+/* A bright, fast shine sweeping across the "verifying" card - deliberately
+   bold (a visible glossy band, not a faint tint) so background activity
+   reads as unmistakable at a glance, not something you have to squint for. */
+@keyframes verify-sweep {
+  from {
+    background-position: -150% 0;
+  }
+  to {
+    background-position: 250% 0;
+  }
+}
+
+.verify-sweep {
+  background-image: linear-gradient(
+    100deg,
+    transparent 30%,
+    color-mix(in srgb, var(--color-accent) 55%, transparent) 48%,
+    color-mix(in srgb, var(--color-accent) 85%, white) 50%,
+    color-mix(in srgb, var(--color-accent) 55%, transparent) 52%,
+    transparent 70%
+  );
+  background-size: 250% 100%;
+  animation: verify-sweep 2s ease-in-out infinite;
+}
+
+/* The rotating ring badge paired with verify-sweep - a visible radar-style
+   scan, not a generic spinner (it never completes a full opaque rotation,
+   just a bright arc chasing itself around the ring). */
+@keyframes verify-scan {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.verify-scan {
+  animation: verify-scan 1.4s linear infinite;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    var(--color-accent) 25%,
+    transparent 50%
+  );
+}
+
 @media (prefers-reduced-motion: reduce) {
   .overlay-fade-in,
   .panel-ease-in,
   .sheet-slide-in-right,
   .sheet-slide-in-left,
-  .dropdown-ease-in {
+  .dropdown-ease-in,
+  .verify-scan,
+  .verify-sweep {
     animation: none !important;
   }
 }
