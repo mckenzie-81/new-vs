@@ -148,9 +148,17 @@ export function VoterPreviewModal({
         ))}
       </div>
 
-      <Button variant="accent" className="mt-5" onClick={() => setScreen("review")}>
-        Review selections
-      </Button>
+      <div className="mt-5 flex gap-3">
+        <SecondaryButton
+          onClick={() => setSelections({})}
+          disabled={Object.keys(selections).length === 0}
+        >
+          Reset selections
+        </SecondaryButton>
+        <Button variant="accent" fullWidth={false} onClick={() => setScreen("review")}>
+          Review selections
+        </Button>
+      </div>
     </Modal>
   );
 }

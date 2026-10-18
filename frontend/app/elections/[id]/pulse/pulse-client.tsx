@@ -77,12 +77,20 @@ export function PulseClient({ electionId }: { electionId: string }) {
     : notStarted
       ? "Opening now"
       : "Closed";
+  const closingSoon =
+    !notStarted &&
+    election.status === "LIVE" &&
+    new Date(election.endTime).getTime() - now < 60 * 60_000;
 
   const stats: Stat[] = [
     { label: "Eligible voters", value: snapshot.eligibleCount.toLocaleString() },
     { label: "Voted so far", value: snapshot.votedCount.toLocaleString() },
-    { label: "Turnout", value: `${turnoutPct}%` },
-    { label: notStarted ? "Starts" : "Time left", value: timeLeftLabel },
+    { label: "Turnout", value: `${turnoutPct}%`, tone: "accent" },
+    {
+      label: notStarted ? "Starts" : "Time left",
+      value: timeLeftLabel,
+      tone: closingSoon ? "danger" : undefined,
+    },
   ];
 
   return (

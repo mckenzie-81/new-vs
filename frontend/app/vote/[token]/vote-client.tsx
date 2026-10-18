@@ -15,6 +15,11 @@ import { CenteredCard, CenteredMessage } from "@/components/layout/centered-card
 import { Button, SecondaryButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
+import {
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+  ClockIcon,
+} from "@heroicons/react/24/outline";
 
 type Screen =
   | "loading"
@@ -201,19 +206,29 @@ export function VoteClient({ token }: { token: string }) {
 
   if (screen === "invalid") {
     return (
-      <CenteredMessage>
-        This voting link isn&apos;t valid or has expired. Contact your election administrator if
-        you think this is a mistake.
-      </CenteredMessage>
+      <CenteredCard>
+        <div className="text-center">
+          <ExclamationTriangleIcon className="mx-auto mb-3 h-10 w-10 text-danger" />
+          <p className="text-sm leading-relaxed text-ink-muted">
+            This voting link isn&apos;t valid or has expired. Contact your election
+            administrator if you think this is a mistake.
+          </p>
+        </div>
+      </CenteredCard>
     );
   }
 
   if (screen === "locked") {
     return (
-      <CenteredMessage>
-        This link has been locked after too many failed attempts. Contact your election
-        administrator for a new one.
-      </CenteredMessage>
+      <CenteredCard>
+        <div className="text-center">
+          <ExclamationTriangleIcon className="mx-auto mb-3 h-10 w-10 text-danger" />
+          <p className="text-sm leading-relaxed text-ink-muted">
+            This link has been locked after too many failed attempts. Contact your election
+            administrator for a new one.
+          </p>
+        </div>
+      </CenteredCard>
     );
   }
 
@@ -225,6 +240,7 @@ export function VoteClient({ token }: { token: string }) {
     return (
       <CenteredCard>
         <div className="text-center">
+          <CheckCircleIcon className="mx-auto mb-3 h-10 w-10 text-success" />
           <h1 className="mb-2 text-xl font-semibold tracking-tight">Already voted</h1>
           <p className="text-sm leading-relaxed text-ink-muted">
             You&apos;ve already cast your ballot{election ? ` for ${election.title}` : ""}.
@@ -239,6 +255,7 @@ export function VoteClient({ token }: { token: string }) {
     return (
       <CenteredCard>
         <div className="text-center">
+          <ClockIcon className="mx-auto mb-3 h-10 w-10 text-warning" />
           <h1 className="mb-2 text-xl font-semibold tracking-tight">Not open yet</h1>
           <p className="text-sm leading-relaxed text-ink-muted">
             {election
@@ -254,6 +271,7 @@ export function VoteClient({ token }: { token: string }) {
     return (
       <CenteredCard>
         <div className="text-center">
+          <CheckCircleIcon className="mx-auto mb-3 h-10 w-10 text-success" />
           <h1 className="mb-2 text-xl font-semibold tracking-tight">Vote submitted</h1>
           <p className="text-sm leading-relaxed text-ink-muted">
             Thank you for voting{election ? ` in ${election.title}` : ""}. You can close this
@@ -357,14 +375,18 @@ export function VoteClient({ token }: { token: string }) {
         </div>
       ))}
 
-      <Button
-        variant="accent"
-        className="mt-5"
-        fullWidth={false}
-        onClick={() => setScreen("review")}
-      >
-        Review selections
-      </Button>
+      <div className="mt-5 flex gap-3">
+        <SecondaryButton
+          type="button"
+          onClick={() => setSelections({})}
+          disabled={Object.keys(selections).length === 0}
+        >
+          Reset selections
+        </SecondaryButton>
+        <Button variant="accent" fullWidth={false} onClick={() => setScreen("review")}>
+          Review selections
+        </Button>
+      </div>
     </div>
   );
 }

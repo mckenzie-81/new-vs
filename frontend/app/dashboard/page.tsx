@@ -39,6 +39,7 @@ export default function OverviewPage() {
             label: "Live now",
             value: elections ? elections.filter((e) => e.status === "LIVE").length : "–",
             href: "/dashboard/elections",
+            tone: elections && elections.some((e) => e.status === "LIVE") ? "success" : undefined,
           },
           ...(user.role === "SYSTEMADMIN"
             ? [
@@ -53,6 +54,10 @@ export default function OverviewPage() {
                     ? people.filter((p) => p.status === "PENDING_VERIFICATION").length
                     : ("–" as const),
                   href: "/dashboard/administrators",
+                  tone:
+                    people && people.some((p) => p.status === "PENDING_VERIFICATION")
+                      ? ("warning" as const)
+                      : undefined,
                 },
               ]
             : []),

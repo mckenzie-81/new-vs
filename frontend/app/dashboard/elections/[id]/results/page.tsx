@@ -41,25 +41,39 @@ export default function ResultsPage() {
         <div className="flex flex-col gap-8 border-t border-line pt-6">
           {results.portfolios.map((p) => {
             const maxVotes = Math.max(1, ...p.candidates.map((c) => c.voteCount));
+            // Every candidate at the max is a leader - a tie doesn't pick
+            // a winner to highlight, it highlights all of them.
+            const hasLeader = maxVotes > 0;
             return (
               <div key={p.portfolioId}>
                 <h3 className="text-lg font-semibold text-ink">{p.title}</h3>
                 <p className="mt-0.5 text-sm text-ink-faint">{p.totalBallots} ballots cast</p>
                 <div className="mt-3 flex flex-col gap-2">
-                  {p.candidates.map((c) => (
-                    <div key={c.candidateId}>
-                      <div className="flex items-baseline justify-between text-sm">
-                        <span className="font-medium text-ink">{c.fullName}</span>
-                        <span className="tabular-nums text-ink-muted">{c.voteCount}</span>
+                  {p.candidates.map((c) => {
+                    const leading = hasLeader && c.voteCount === maxVotes;
+                    return (
+                      <div key={c.candidateId}>
+                        <div className="flex items-baseline justify-between text-sm">
+                          <span
+                            className={`font-medium ${leading ? "text-success" : "text-ink"}`}
+                          >
+                            {c.fullName}
+                          </span>
+                          <span
+                            className={`tabular-nums ${leading ? "font-semibold text-success" : "text-ink-muted"}`}
+                          >
+                            {c.voteCount}
+                          </span>
+                        </div>
+                        <div className="mt-1 h-2 w-full bg-page">
+                          <div
+                            className={`h-2 ${leading ? "bg-success" : "bg-accent"}`}
+                            style={{ width: `${(c.voteCount / maxVotes) * 100}%` }}
+                          />
+                        </div>
                       </div>
-                      <div className="mt-1 h-2 w-full bg-page">
-                        <div
-                          className="h-2 bg-accent"
-                          style={{ width: `${(c.voteCount / maxVotes) * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   <div className="flex items-baseline justify-between text-sm text-ink-faint">
                     <span>Abstained</span>
                     <span className="tabular-nums">{p.abstainCount}</span>
