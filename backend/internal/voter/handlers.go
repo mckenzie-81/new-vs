@@ -195,7 +195,11 @@ func (h *Handler) getBallot(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, ErrAlreadyVoted):
 		httpx.Error(w, http.StatusConflict, err.Error())
 	case errors.Is(err, ErrElectionNotLive):
-		httpx.Error(w, http.StatusConflict, err.Error())
+		// Distinct from ErrAlreadyVoted's 409 on purpose - both are states
+		// where you can't vote right now, but they're not the same state,
+		// and the frontend needs to tell them apart to show the right
+		// screen instead of calling everything "already voted".
+		httpx.Error(w, http.StatusForbidden, err.Error())
 	default:
 		log.Printf("getting ballot failed: %v", err)
 		httpx.Error(w, http.StatusInternalServerError, "failed to load ballot")
@@ -229,7 +233,7 @@ func (h *Handler) castVote(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, ErrAlreadyVoted):
 		httpx.Error(w, http.StatusConflict, err.Error())
 	case errors.Is(err, ErrElectionNotLive):
-		httpx.Error(w, http.StatusConflict, err.Error())
+		httpx.Error(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, ErrInvalidSelection):
 		httpx.Error(w, http.StatusBadRequest, err.Error())
 	default:

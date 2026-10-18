@@ -529,6 +529,8 @@ export interface VoteElectionSummary {
   id: string;
   title: string;
   description: string | null;
+  startTime: string;
+  endTime: string;
 }
 
 export interface VoteTokenStatus {

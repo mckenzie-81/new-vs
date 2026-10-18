@@ -153,9 +153,11 @@ func (s *Service) IssueAndInviteCredentials(ctx context.Context, electionID stri
 // everything else admin-internal, which has no business in a voter-facing
 // response.
 type ElectionSummary struct {
-	ID          string  `json:"id"`
-	Title       string  `json:"title"`
-	Description *string `json:"description"`
+	ID          string    `json:"id"`
+	Title       string    `json:"title"`
+	Description *string   `json:"description"`
+	StartTime   time.Time `json:"startTime"`
+	EndTime     time.Time `json:"endTime"`
 }
 
 type TokenStatus struct {
@@ -196,7 +198,7 @@ func (s *Service) GetTokenStatus(ctx context.Context, rawToken string) (*TokenSt
 	if err != nil {
 		return nil, fmt.Errorf("looking up election: %w", err)
 	}
-	summary := &ElectionSummary{ID: e.ID, Title: e.Title, Description: e.Description}
+	summary := &ElectionSummary{ID: e.ID, Title: e.Title, Description: e.Description, StartTime: e.StartTime, EndTime: e.EndTime}
 
 	switch status {
 	case "VOTED":
@@ -397,7 +399,7 @@ func (s *Service) GetBallot(ctx context.Context, rawToken string) (*BallotResult
 	}
 
 	return &BallotResult{
-		Election:   ElectionSummary{ID: e.ID, Title: e.Title, Description: e.Description},
+		Election:   ElectionSummary{ID: e.ID, Title: e.Title, Description: e.Description, StartTime: e.StartTime, EndTime: e.EndTime},
 		Portfolios: portfolios,
 	}, nil
 }

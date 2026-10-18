@@ -21,11 +21,21 @@ type Screen =
   | "invalid"
   | "locked"
   | "already_voted"
+  | "not_open"
   | "verify"
   | "ballot"
   | "review"
   | "done"
   | "error";
+
+function formatDateTime(iso: string) {
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 // portfolioId -> candidateId; an absent key means abstain, same convention
 // as the admin-side VoterPreviewModal this screen is adapted from.
@@ -92,7 +102,13 @@ export function VoteClient({ token }: { token: string }) {
         setScreen("ballot");
       })
       .catch((err) => {
-        setScreen(err instanceof ApiError && err.status === 409 ? "already_voted" : "error");
+        if (err instanceof ApiError && err.status === 409) {
+          setScreen("already_voted");
+        } else if (err instanceof ApiError && err.status === 403) {
+          setScreen("not_open");
+        } else {
+          setScreen("error");
+        }
       });
   }
 
@@ -167,6 +183,8 @@ export function VoteClient({ token }: { token: string }) {
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setScreen("already_voted");
+      } else if (err instanceof ApiError && err.status === 403) {
+        setScreen("not_open");
       } else {
         setSubmitError(
           err instanceof ApiError ? err.message : "Something went wrong. Please try again."
@@ -211,6 +229,21 @@ export function VoteClient({ token }: { token: string }) {
           <p className="text-sm leading-relaxed text-ink-muted">
             You&apos;ve already cast your ballot{election ? ` for ${election.title}` : ""}.
             Thank you for voting.
+          </p>
+        </div>
+      </CenteredCard>
+    );
+  }
+
+  if (screen === "not_open") {
+    return (
+      <CenteredCard>
+        <div className="text-center">
+          <h1 className="mb-2 text-xl font-semibold tracking-tight">Not open yet</h1>
+          <p className="text-sm leading-relaxed text-ink-muted">
+            {election
+              ? `Voting for ${election.title} opens ${formatDateTime(election.startTime)}. Come back then using the same link.`
+              : "Voting isn't open yet for this election. Come back and use the same link once it starts."}
           </p>
         </div>
       </CenteredCard>
