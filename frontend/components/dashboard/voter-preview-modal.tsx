@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { listPortfolios, Election, Portfolio, Candidate } from "@/lib/api";
+import { listPortfolios, candidateTicketName, Election, Portfolio, Candidate } from "@/lib/api";
 import { Modal } from "@/components/ui/modal";
 import { Button, SecondaryButton } from "@/components/ui/button";
 
@@ -43,7 +43,7 @@ function CandidateOption({
           {candidate.fullName.trim().charAt(0).toUpperCase() || "?"}
         </div>
       )}
-      <span className="text-lg font-medium text-ink">{candidate.fullName}</span>
+      <span className="text-lg font-medium text-ink">{candidateTicketName(candidate)}</span>
     </button>
   );
 }
@@ -104,7 +104,7 @@ export function VoterPreviewModal({
               <li key={p.id} className="py-3">
                 <div className="text-sm font-semibold text-ink">{p.title}</div>
                 <div className="text-sm text-ink-muted">
-                  {candidate ? candidate.fullName : "Abstained"}
+                  {candidate ? candidateTicketName(candidate) : "Abstained"}
                 </div>
               </li>
             );

@@ -200,9 +200,17 @@ export interface Candidate {
   id: string;
   portfolioId: string;
   fullName: string;
+  runningMates: string[];
   photoUrl: string | null;
   displayOrder: number;
   createdAt: string;
+}
+
+// The ballot's one votable unit may be a joint ticket, not just one
+// person - this is the single place that decides how that reads as text,
+// so every card/list/result shows a ticket the same way.
+export function candidateTicketName(candidate: Pick<Candidate, "fullName" | "runningMates">) {
+  return [candidate.fullName, ...candidate.runningMates].join(" & ");
 }
 
 export interface Portfolio {
@@ -246,14 +254,15 @@ export async function createCandidate(
   electionId: string,
   portfolioId: string,
   fullName: string,
-  photoUrl: string
+  photoUrl: string,
+  runningMates: string[] = []
 ): Promise<Candidate> {
   const response = await apiFetch(
     `/api/elections/${electionId}/portfolios/${portfolioId}/candidates`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fullName, photoUrl }),
+      body: JSON.stringify({ fullName, photoUrl, runningMates }),
     }
   );
   return response.json();
@@ -264,14 +273,15 @@ export async function updateCandidate(
   portfolioId: string,
   candidateId: string,
   fullName: string,
-  photoUrl: string
+  photoUrl: string,
+  runningMates: string[] = []
 ): Promise<Candidate> {
   const response = await apiFetch(
     `/api/elections/${electionId}/portfolios/${portfolioId}/candidates/${candidateId}`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fullName, photoUrl }),
+      body: JSON.stringify({ fullName, photoUrl, runningMates }),
     }
   );
   return response.json();
@@ -535,6 +545,7 @@ export async function issueVoterCredentials(
 export interface CandidateResult {
   candidateId: string;
   fullName: string;
+  runningMates: string[];
   voteCount: number;
 }
 

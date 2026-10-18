@@ -516,9 +516,10 @@ func (s *Service) CastVote(ctx context.Context, rawToken string, selections map[
 }
 
 type CandidateResult struct {
-	CandidateID string `json:"candidateId"`
-	FullName    string `json:"fullName"`
-	VoteCount   int    `json:"voteCount"`
+	CandidateID  string   `json:"candidateId"`
+	FullName     string   `json:"fullName"`
+	RunningMates []string `json:"runningMates"`
+	VoteCount    int      `json:"voteCount"`
 }
 
 type PortfolioResult struct {
@@ -588,7 +589,9 @@ func (s *Service) GetResults(ctx context.Context, electionID string) (*Results, 
 		total := 0
 		for _, c := range p.Candidates {
 			count := counts[p.ID][c.ID]
-			pr.Candidates = append(pr.Candidates, CandidateResult{CandidateID: c.ID, FullName: c.FullName, VoteCount: count})
+			pr.Candidates = append(pr.Candidates, CandidateResult{
+				CandidateID: c.ID, FullName: c.FullName, RunningMates: c.RunningMates, VoteCount: count,
+			})
 			total += count
 		}
 		pr.AbstainCount = counts[p.ID][""]

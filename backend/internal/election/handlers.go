@@ -448,8 +448,9 @@ func (h *Handler) reorderPortfolios(w http.ResponseWriter, r *http.Request) {
 }
 
 type candidateRequest struct {
-	FullName string `json:"fullName"`
-	PhotoURL string `json:"photoUrl"`
+	FullName     string   `json:"fullName"`
+	PhotoURL     string   `json:"photoUrl"`
+	RunningMates []string `json:"runningMates"`
 }
 
 func (h *Handler) createCandidate(w http.ResponseWriter, r *http.Request) {
@@ -467,7 +468,7 @@ func (h *Handler) createCandidate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	portfolioID := r.PathValue("portfolioId")
-	result, err := h.service.CreateCandidate(r.Context(), electionID, portfolioID, req.FullName, req.PhotoURL)
+	result, err := h.service.CreateCandidate(r.Context(), electionID, portfolioID, req.FullName, req.PhotoURL, req.RunningMates)
 
 	switch {
 	case err == nil:
@@ -516,7 +517,7 @@ func (h *Handler) updateCandidate(w http.ResponseWriter, r *http.Request) {
 
 	portfolioID := r.PathValue("portfolioId")
 	candidateID := r.PathValue("candidateId")
-	result, err := h.service.UpdateCandidate(r.Context(), electionID, portfolioID, candidateID, req.FullName, req.PhotoURL)
+	result, err := h.service.UpdateCandidate(r.Context(), electionID, portfolioID, candidateID, req.FullName, req.PhotoURL, req.RunningMates)
 
 	switch {
 	case err == nil:

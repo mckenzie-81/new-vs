@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getElectionResults, ApiError, ElectionResults } from "@/lib/api";
+import { getElectionResults, candidateTicketName, ApiError, ElectionResults } from "@/lib/api";
 import { useElection } from "@/components/dashboard/election-context";
 import { AdminHeader } from "@/components/dashboard/admin-header";
 
@@ -57,7 +57,7 @@ export default function ResultsPage() {
                           <span
                             className={`font-medium ${leading ? "text-success" : "text-ink"}`}
                           >
-                            {c.fullName}
+                            {candidateTicketName(c)}
                           </span>
                           <span
                             className={`tabular-nums ${leading ? "font-semibold text-success" : "text-ink-muted"}`}

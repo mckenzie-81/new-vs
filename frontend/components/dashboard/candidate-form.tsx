@@ -19,8 +19,17 @@ export function CandidateForm({
 }) {
   const [fullName, setFullName] = useState(candidate?.fullName ?? "");
   const [photoUrl, setPhotoUrl] = useState(candidate?.photoUrl ?? "");
+  const [runningMates, setRunningMates] = useState<string[]>(candidate?.runningMates ?? []);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function updateRunningMate(index: number, value: string) {
+    setRunningMates((prev) => prev.map((m, i) => (i === index ? value : m)));
+  }
+
+  function removeRunningMate(index: number) {
+    setRunningMates((prev) => prev.filter((_, i) => i !== index));
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -28,9 +37,16 @@ export function CandidateForm({
     setSubmitting(true);
     try {
       if (candidate) {
-        await updateCandidate(electionId, portfolioId, candidate.id, fullName, photoUrl);
+        await updateCandidate(
+          electionId,
+          portfolioId,
+          candidate.id,
+          fullName,
+          photoUrl,
+          runningMates
+        );
       } else {
-        await createCandidate(electionId, portfolioId, fullName, photoUrl);
+        await createCandidate(electionId, portfolioId, fullName, photoUrl, runningMates);
       }
       onSaved();
     } catch (err) {
@@ -70,6 +86,43 @@ export function CandidateForm({
           onChange={(e) => setPhotoUrl(e.target.value)}
         />
       </Field>
+
+      <div>
+        <p className="text-sm font-semibold text-ink">Running mates</p>
+        <p className="mt-1 text-sm text-ink-muted">
+          Optional. For a joint ticket - e.g. a Vice President running together with this
+          candidate. They share this one photo and appear as one choice on the ballot.
+        </p>
+        {runningMates.length > 0 && (
+          <div className="mt-3 flex flex-col gap-2">
+            {runningMates.map((mate, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <Input
+                  value={mate}
+                  onChange={(e) => updateRunningMate(index, e.target.value)}
+                  placeholder="Running mate's name"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeRunningMate(index)}
+                  className="shrink-0 text-sm text-ink-faint hover:text-danger"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {runningMates.length < 4 && (
+          <button
+            type="button"
+            onClick={() => setRunningMates((prev) => [...prev, ""])}
+            className="mt-3 text-sm font-semibold text-accent hover:underline"
+          >
+            + Add running mate
+          </button>
+        )}
+      </div>
 
       {error && <p className="text-sm text-danger">{error}</p>}
 

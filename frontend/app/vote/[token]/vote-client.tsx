@@ -7,6 +7,7 @@ import {
   getVoterBallot,
   castVote,
   getBranding,
+  candidateTicketName,
   ApiError,
   VoteElectionSummary,
   Portfolio,
@@ -93,7 +94,7 @@ function CandidateOption({
           {candidate.fullName.trim().charAt(0).toUpperCase() || "?"}
         </div>
       )}
-      <span className="text-lg font-medium text-ink">{candidate.fullName}</span>
+      <span className="text-lg font-medium text-ink">{candidateTicketName(candidate)}</span>
     </button>
   );
 }
@@ -396,7 +397,7 @@ export function VoteClient({ token }: { token: string }) {
                     {p.title}
                   </div>
                   <div className="text-sm text-ink-muted">
-                    {candidate ? candidate.fullName : "Abstained"}
+                    {candidate ? candidateTicketName(candidate) : "Abstained"}
                   </div>
                 </li>
               );

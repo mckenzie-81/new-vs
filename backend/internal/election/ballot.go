@@ -17,10 +17,19 @@ var (
 
 const maxPhotoURLLength = 2048
 
+// A candidate is the one votable unit a portfolio offers - votes.candidate_id
+// always points at exactly one of these, win or lose, regardless of how many
+// people are actually on it. RunningMates exists so a ticket (e.g. President
+// running with a Vice President) is still a single choice on the ballot and
+// a single row here, not two candidates competing against each other for
+// the same slot. There's one shared photo for the whole ticket (PhotoURL) -
+// running mates are names only, matching how a real ballot typically shows
+// a joint ticket as one photographed pair under one set of names.
 type Candidate struct {
 	ID           string    `json:"id"`
 	PortfolioID  string    `json:"portfolioId"`
 	FullName     string    `json:"fullName"`
+	RunningMates []string  `json:"runningMates"`
 	PhotoURL     *string   `json:"photoUrl"`
 	DisplayOrder int       `json:"displayOrder"`
 	CreatedAt    time.Time `json:"createdAt"`
@@ -141,44 +150,61 @@ func (s *Service) ReorderPortfolios(ctx context.Context, electionID string, orde
 	return nil
 }
 
-func validateCandidateInput(fullName, photoURL string) (string, *string, error) {
+const maxRunningMates = 4
+
+func validateCandidateInput(fullName, photoURL string, runningMates []string) (string, *string, []string, error) {
 	fullName = strings.TrimSpace(fullName)
 	if fullName == "" {
-		return "", nil, fmt.Errorf("%w: name is required", ErrInvalidInput)
+		return "", nil, nil, fmt.Errorf("%w: name is required", ErrInvalidInput)
 	}
 	if len(fullName) > maxTitleLength {
-		return "", nil, fmt.Errorf("%w: name must be %d characters or fewer", ErrInvalidInput, maxTitleLength)
+		return "", nil, nil, fmt.Errorf("%w: name must be %d characters or fewer", ErrInvalidInput, maxTitleLength)
 	}
 
 	var photoURLVal *string
 	if trimmed := strings.TrimSpace(photoURL); trimmed != "" {
 		if len(trimmed) > maxPhotoURLLength {
-			return "", nil, fmt.Errorf("%w: photo URL is too long", ErrInvalidInput)
+			return "", nil, nil, fmt.Errorf("%w: photo URL is too long", ErrInvalidInput)
 		}
 		photoURLVal = &trimmed
 	}
 
-	return fullName, photoURLVal, nil
+	if len(runningMates) > maxRunningMates {
+		return "", nil, nil, fmt.Errorf("%w: at most %d running mates are allowed", ErrInvalidInput, maxRunningMates)
+	}
+	mates := make([]string, 0, len(runningMates))
+	for _, m := range runningMates {
+		trimmed := strings.TrimSpace(m)
+		if trimmed == "" {
+			continue
+		}
+		if len(trimmed) > maxTitleLength {
+			return "", nil, nil, fmt.Errorf("%w: a running mate's name must be %d characters or fewer", ErrInvalidInput, maxTitleLength)
+		}
+		mates = append(mates, trimmed)
+	}
+
+	return fullName, photoURLVal, mates, nil
 }
 
-func (s *Service) CreateCandidate(ctx context.Context, electionID, portfolioID, fullName, photoURL string) (*Candidate, error) {
+func (s *Service) CreateCandidate(ctx context.Context, electionID, portfolioID, fullName, photoURL string, runningMates []string) (*Candidate, error) {
 	if err := s.requireDraft(ctx, electionID); err != nil {
 		return nil, err
 	}
 
-	fullName, photoURLVal, err := validateCandidateInput(fullName, photoURL)
+	fullName, photoURLVal, mates, err := validateCandidateInput(fullName, photoURL, runningMates)
 	if err != nil {
 		return nil, err
 	}
 
 	c := Candidate{PortfolioID: portfolioID}
 	err = s.pool.QueryRow(ctx, `
-		INSERT INTO candidates (portfolio_id, full_name, photo_url, display_order)
-		SELECT p.id, $2, $3, coalesce((SELECT max(display_order) + 1 FROM candidates WHERE portfolio_id = p.id), 0)
-		FROM portfolios p WHERE p.id = $1 AND p.election_id = $4
-		RETURNING id, full_name, photo_url, display_order, created_at
-	`, portfolioID, fullName, photoURLVal, electionID).Scan(
-		&c.ID, &c.FullName, &c.PhotoURL, &c.DisplayOrder, &c.CreatedAt,
+		INSERT INTO candidates (portfolio_id, full_name, photo_url, running_mates, display_order)
+		SELECT p.id, $2, $3, $4, coalesce((SELECT max(display_order) + 1 FROM candidates WHERE portfolio_id = p.id), 0)
+		FROM portfolios p WHERE p.id = $1 AND p.election_id = $5
+		RETURNING id, full_name, photo_url, running_mates, display_order, created_at
+	`, portfolioID, fullName, photoURLVal, mates, electionID).Scan(
+		&c.ID, &c.FullName, &c.PhotoURL, &c.RunningMates, &c.DisplayOrder, &c.CreatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
@@ -190,25 +216,25 @@ func (s *Service) CreateCandidate(ctx context.Context, electionID, portfolioID, 
 	return &c, nil
 }
 
-// UpdateCandidate changes a candidate's name and photo. Same draft-only
-// rule as every other ballot edit.
-func (s *Service) UpdateCandidate(ctx context.Context, electionID, portfolioID, candidateID, fullName, photoURL string) (*Candidate, error) {
+// UpdateCandidate changes a candidate's name, photo, and running mates.
+// Same draft-only rule as every other ballot edit.
+func (s *Service) UpdateCandidate(ctx context.Context, electionID, portfolioID, candidateID, fullName, photoURL string, runningMates []string) (*Candidate, error) {
 	if err := s.requireDraft(ctx, electionID); err != nil {
 		return nil, err
 	}
 
-	fullName, photoURLVal, err := validateCandidateInput(fullName, photoURL)
+	fullName, photoURLVal, mates, err := validateCandidateInput(fullName, photoURL, runningMates)
 	if err != nil {
 		return nil, err
 	}
 
 	c := Candidate{ID: candidateID, PortfolioID: portfolioID}
 	err = s.pool.QueryRow(ctx, `
-		UPDATE candidates SET full_name = $1, photo_url = $2
-		WHERE id = $3 AND portfolio_id IN (SELECT id FROM portfolios WHERE id = $4 AND election_id = $5)
-		RETURNING full_name, photo_url, display_order, created_at
-	`, fullName, photoURLVal, candidateID, portfolioID, electionID).Scan(
-		&c.FullName, &c.PhotoURL, &c.DisplayOrder, &c.CreatedAt,
+		UPDATE candidates SET full_name = $1, photo_url = $2, running_mates = $3
+		WHERE id = $4 AND portfolio_id IN (SELECT id FROM portfolios WHERE id = $5 AND election_id = $6)
+		RETURNING full_name, photo_url, running_mates, display_order, created_at
+	`, fullName, photoURLVal, mates, candidateID, portfolioID, electionID).Scan(
+		&c.FullName, &c.PhotoURL, &c.RunningMates, &c.DisplayOrder, &c.CreatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
@@ -310,7 +336,7 @@ func (s *Service) ListPortfolios(ctx context.Context, electionID string) ([]Port
 	}
 
 	candidateRows, err := s.pool.Query(ctx, `
-		SELECT c.id, c.portfolio_id, c.full_name, c.photo_url, c.display_order, c.created_at
+		SELECT c.id, c.portfolio_id, c.full_name, c.photo_url, c.running_mates, c.display_order, c.created_at
 		FROM candidates c
 		JOIN portfolios p ON p.id = c.portfolio_id
 		WHERE p.election_id = $1
@@ -324,7 +350,7 @@ func (s *Service) ListPortfolios(ctx context.Context, electionID string) ([]Port
 	for candidateRows.Next() {
 		var c Candidate
 		if err := candidateRows.Scan(
-			&c.ID, &c.PortfolioID, &c.FullName, &c.PhotoURL, &c.DisplayOrder, &c.CreatedAt,
+			&c.ID, &c.PortfolioID, &c.FullName, &c.PhotoURL, &c.RunningMates, &c.DisplayOrder, &c.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scanning candidate: %w", err)
 		}

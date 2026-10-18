@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { ApiError, deleteCandidate, deletePortfolio, Candidate, Portfolio } from "@/lib/api";
+import {
+  ApiError,
+  deleteCandidate,
+  deletePortfolio,
+  candidateTicketName,
+  Candidate,
+  Portfolio,
+} from "@/lib/api";
 import { Modal } from "@/components/ui/modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { SortableItem } from "./sortable-item";
@@ -152,7 +159,7 @@ export function PortfolioCard({
                           : "text-sm font-medium text-ink"
                       }
                     >
-                      {candidate.fullName}
+                      {candidateTicketName(candidate)}
                     </span>
                   </div>
                   {canEdit && (
