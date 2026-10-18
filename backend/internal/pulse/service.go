@@ -6,6 +6,12 @@
 // count IS that candidate's live vote count, so those numbers are
 // suppressed entirely rather than computed and shown.
 //
+// Final standings are the one exception, and only after both (a) the
+// election is CLOSED/ARCHIVED and (b) an admin has explicitly published
+// them via PublishResults - see election_pulse_results. Closing ends the
+// contestability risk; the explicit publish step is a human certification
+// gate on top of that, not a technical one.
+//
 // Isolation is the other half of the design: this package is the only
 // code that ever queries votes/voter_credentials/electorate_voters for
 // this feature, and it does so on a TTL-gated refresh, never per-request.
@@ -23,6 +29,7 @@ import (
 
 	"backend/internal/election"
 	"backend/internal/electorate"
+	"backend/internal/voter"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -72,13 +79,16 @@ type ScheduleChange struct {
 }
 
 type Snapshot struct {
-	Election            ElectionInfo          `json:"election"`
-	EligibleCount       int                   `json:"eligibleCount"`
-	VotedCount          int                   `json:"votedCount"`
-	TurnoutSeries       []TurnoutPoint        `json:"turnoutSeries"`
-	PortfolioAbstention []PortfolioAbstention `json:"portfolioAbstention"`
-	ScheduleChanges     []ScheduleChange      `json:"scheduleChanges"`
-	RefreshedAt         time.Time             `json:"refreshedAt"`
+	Election            ElectionInfo            `json:"election"`
+	EligibleCount       int                     `json:"eligibleCount"`
+	VotedCount          int                     `json:"votedCount"`
+	TurnoutSeries       []TurnoutPoint          `json:"turnoutSeries"`
+	PortfolioAbstention []PortfolioAbstention   `json:"portfolioAbstention"`
+	ScheduleChanges     []ScheduleChange        `json:"scheduleChanges"`
+	ResultsPublished    bool                    `json:"resultsPublished"`
+	Results             []voter.PortfolioResult `json:"results,omitempty"`
+	ResultsPublishedAt  *time.Time              `json:"resultsPublishedAt,omitempty"`
+	RefreshedAt         time.Time               `json:"refreshedAt"`
 }
 
 type snapshotRow struct {
@@ -93,11 +103,12 @@ type Service struct {
 	pool       *pgxpool.Pool
 	election   *election.Service
 	electorate *electorate.Service
+	voter      *voter.Service
 	sf         singleflight.Group
 }
 
-func NewService(pool *pgxpool.Pool, electionService *election.Service, electorateService *electorate.Service) *Service {
-	return &Service{pool: pool, election: electionService, electorate: electorateService}
+func NewService(pool *pgxpool.Pool, electionService *election.Service, electorateService *electorate.Service, voterService *voter.Service) *Service {
+	return &Service{pool: pool, election: electionService, electorate: electorateService, voter: voterService}
 }
 
 // GetSnapshot is the only entry point this package exposes to a handler -
@@ -146,6 +157,11 @@ func (s *Service) GetSnapshot(ctx context.Context, electionID string) (*Snapshot
 		})
 	}
 
+	published, publishedAt, err := s.readPublishedResults(ctx, electionID)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Snapshot{
 		Election: ElectionInfo{
 			ID:          e.ID,
@@ -162,8 +178,50 @@ func (s *Service) GetSnapshot(ctx context.Context, electionID string) (*Snapshot
 		TurnoutSeries:       row.TurnoutSeries,
 		PortfolioAbstention: row.PortfolioAbstention,
 		ScheduleChanges:     publicChanges,
+		ResultsPublished:    published != nil,
+		Results:             published,
+		ResultsPublishedAt:  publishedAt,
 		RefreshedAt:         row.RefreshedAt,
 	}, nil
+}
+
+func (s *Service) readPublishedResults(ctx context.Context, electionID string) ([]voter.PortfolioResult, *time.Time, error) {
+	var portfolios []voter.PortfolioResult
+	var publishedAt time.Time
+	err := s.pool.QueryRow(ctx, `
+		SELECT portfolios, published_at FROM election_pulse_results WHERE election_id = $1
+	`, electionID).Scan(&portfolios, &publishedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil, nil
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading published results: %w", err)
+	}
+	return portfolios, &publishedAt, nil
+}
+
+// PublishResults freezes the current tally into election_pulse_results so
+// the public pulse page can show it - a deliberate one-time copy, not a
+// live join, same isolation rule as the rest of this package. Reuses
+// voter.GetResults rather than re-deriving the tally, which also means it
+// inherits that method's CLOSED/ARCHIVED-only guard for free.
+func (s *Service) PublishResults(ctx context.Context, electionID string) (*voter.Results, error) {
+	results, err := s.voter.GetResults(ctx, electionID)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := s.pool.Exec(ctx, `
+		INSERT INTO election_pulse_results (election_id, portfolios, published_at)
+		VALUES ($1, $2, now())
+		ON CONFLICT (election_id) DO UPDATE SET
+			portfolios = EXCLUDED.portfolios,
+			published_at = now()
+	`, electionID, results.Portfolios); err != nil {
+		return nil, fmt.Errorf("publishing results: %w", err)
+	}
+
+	return results, nil
 }
 
 func (s *Service) readRow(ctx context.Context, electionID string) (*snapshotRow, error) {

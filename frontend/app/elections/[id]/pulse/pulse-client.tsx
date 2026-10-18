@@ -7,6 +7,7 @@ import { Badge } from "@/components/dashboard/badge";
 import { StatRow, Stat } from "@/components/dashboard/stat-row";
 import { TurnoutChart } from "@/components/pulse/turnout-chart";
 import { AbstentionList } from "@/components/pulse/abstention-list";
+import { ResultsSection } from "@/components/pulse/results-section";
 import { ThemeScope } from "@/components/branding/theme-scope";
 
 const POLL_INTERVAL_MS = 15_000;
@@ -138,6 +139,12 @@ export function PulseClient({ electionId }: { electionId: string }) {
       <div className="mt-10 border-t border-line pt-6">
         <AbstentionList portfolios={snapshot.portfolioAbstention} />
       </div>
+
+      {(election.status === "CLOSED" || election.status === "ARCHIVED") && (
+        <div className="mt-10 border-t border-line pt-6">
+          <ResultsSection published={snapshot.resultsPublished} portfolios={snapshot.results} />
+        </div>
+      )}
 
       {snapshot.scheduleChanges.length > 0 && (
         <div className="mt-10 border-t border-line pt-6">

@@ -50,8 +50,8 @@ func main() {
 	voterService := voter.NewService(pool, electionService, electorateService)
 	voterHandler := voter.NewHandler(voterService, electionService, authService, pool, cfg.AppBaseURL, cfg.CookieSecure)
 
-	pulseService := pulse.NewService(pool, electionService, electorateService)
-	pulseHandler := pulse.NewHandler(pulseService)
+	pulseService := pulse.NewService(pool, electionService, electorateService, voterService)
+	pulseHandler := pulse.NewHandler(pulseService, authService, electionService)
 
 	brandingService := branding.NewService(pool)
 	brandingHandler := branding.NewHandler(brandingService, authService)

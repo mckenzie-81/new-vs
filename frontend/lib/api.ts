@@ -703,11 +703,21 @@ export interface PulseSnapshot {
   turnoutSeries: TurnoutPoint[];
   portfolioAbstention: PortfolioAbstention[];
   scheduleChanges: PulseScheduleChange[];
+  resultsPublished: boolean;
+  results?: PortfolioResult[];
+  resultsPublishedAt?: string;
   refreshedAt: string;
 }
 
 export async function getElectionPulse(electionId: string): Promise<PulseSnapshot> {
   const response = await apiFetch(`/api/elections/${electionId}/pulse`);
+  return response.json();
+}
+
+export async function publishResults(electionId: string): Promise<ElectionResults> {
+  const response = await apiFetch(`/api/elections/${electionId}/publish-results`, {
+    method: "POST",
+  });
   return response.json();
 }
 

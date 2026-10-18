@@ -102,12 +102,31 @@ body {
   animation: dropdown-ease-in 120ms ease-out;
 }
 
+/* A slow, staggered opacity pulse for "working on it" indicators (results
+   being verified before publish) - the classic three-dot processing cue,
+   not a spinner or bounce, so it reads as patient rather than urgent. */
+@keyframes pulse-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+.pulse-dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .overlay-fade-in,
   .panel-ease-in,
   .sheet-slide-in-right,
   .sheet-slide-in-left,
-  .dropdown-ease-in {
+  .dropdown-ease-in,
+  .pulse-dot {
     animation: none !important;
   }
 }

@@ -5,20 +5,25 @@ import (
 	"log"
 	"net/http"
 
+	"backend/internal/auth"
 	"backend/internal/election"
 	"backend/internal/httpx"
+	"backend/internal/voter"
 )
 
 type Handler struct {
-	service *Service
+	service     *Service
+	authService *auth.Service
+	election    *election.Service
 }
 
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *Service, authService *auth.Service, electionService *election.Service) *Handler {
+	return &Handler{service: service, authService: authService, election: electionService}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/elections/{id}/pulse", h.getPulse)
+	mux.HandleFunc("POST /api/elections/{id}/publish-results", h.publishResults)
 }
 
 // getPulse is deliberately the one handler in this codebase with no
@@ -41,5 +46,29 @@ func (h *Handler) getPulse(w http.ResponseWriter, r *http.Request) {
 	default:
 		log.Printf("getting pulse snapshot failed: %v", err)
 		httpx.Error(w, http.StatusInternalServerError, "failed to get pulse data")
+	}
+}
+
+// publishResults uses the same "systemadmin or assigned admin" rule as
+// editing the ballot - certifying final standings for public release is at
+// least as consequential as building the ballot was.
+func (h *Handler) publishResults(w http.ResponseWriter, r *http.Request) {
+	electionID := r.PathValue("id")
+	if _, err := election.AuthorizeBallotEditor(h.authService, h.election, w, r, electionID); err != nil {
+		election.WriteBallotAuthError(w, err)
+		return
+	}
+
+	results, err := h.service.PublishResults(r.Context(), electionID)
+	switch {
+	case err == nil:
+		httpx.JSON(w, http.StatusOK, results)
+	case errors.Is(err, election.ErrNotFound):
+		httpx.Error(w, http.StatusNotFound, "no such election")
+	case errors.Is(err, voter.ErrResultsNotReady):
+		httpx.Error(w, http.StatusConflict, err.Error())
+	default:
+		log.Printf("publishing results failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to publish results")
 	}
 }
