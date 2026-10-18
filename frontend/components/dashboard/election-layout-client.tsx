@@ -173,6 +173,15 @@ export function ElectionLayoutClient({ children }: { children: React.ReactNode }
           <p className="mt-1 text-sm font-medium text-ink-muted">
             {formatRange(election.startTime, election.endTime)}
           </p>
+          {election.status !== "DRAFT" && election.status !== "PENDING_APPROVAL" && (
+            <Link
+              href={`/elections/${id}/pulse`}
+              target="_blank"
+              className="mt-1 inline-block text-sm font-semibold text-accent hover:underline"
+            >
+              View public pulse →
+            </Link>
+          )}
         </div>
 
         {election.status === "DRAFT" && canSubmit && (

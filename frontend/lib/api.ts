@@ -576,3 +576,39 @@ export async function castVote(
     body: JSON.stringify({ electionId, selections }),
   });
 }
+
+// --- Public pulse (turnout transparency, no login) ---
+
+export interface TurnoutPoint {
+  bucketStart: string;
+  count: number;
+}
+
+export interface PortfolioAbstention {
+  portfolioId: string;
+  title: string;
+  uncontested: boolean;
+  ballots: number | null;
+  abstentions: number | null;
+}
+
+export interface PulseSnapshot {
+  election: {
+    id: string;
+    title: string;
+    description: string | null;
+    status: string;
+    startTime: string;
+    endTime: string;
+  };
+  eligibleCount: number;
+  votedCount: number;
+  turnoutSeries: TurnoutPoint[];
+  portfolioAbstention: PortfolioAbstention[];
+  refreshedAt: string;
+}
+
+export async function getElectionPulse(electionId: string): Promise<PulseSnapshot> {
+  const response = await apiFetch(`/api/elections/${electionId}/pulse`);
+  return response.json();
+}
