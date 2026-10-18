@@ -49,6 +49,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/elections/{id}/reject", h.rejectElection)
 	mux.HandleFunc("DELETE /api/elections/{id}", h.deleteElection)
 	mux.HandleFunc("POST /api/elections/{id}/archive", h.archiveElection)
+	mux.HandleFunc("PUT /api/elections/{id}/schedule", h.updateSchedule)
+	mux.HandleFunc("GET /api/elections/{id}/schedule-changes", h.listScheduleChanges)
 }
 
 // authorizeBallotEditor allows a systemadmin unconditionally, or an admin
@@ -934,6 +936,79 @@ func (h *Handler) archiveElection(w http.ResponseWriter, r *http.Request) {
 		log.Printf("archiving election failed: %v", err)
 		httpx.Error(w, http.StatusInternalServerError, "failed to archive election")
 	}
+}
+
+type updateScheduleRequest struct {
+	EndTime string `json:"endTime"`
+	Reason  string `json:"reason"`
+}
+
+func (h *Handler) updateSchedule(w http.ResponseWriter, r *http.Request) {
+	electionID := r.PathValue("id")
+	actor, err := h.authorizeBallotEditor(w, r, electionID)
+	if err != nil {
+		writeBallotAuthError(w, err)
+		return
+	}
+
+	var req updateScheduleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	newEndTime, err := time.Parse(time.RFC3339, req.EndTime)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "end time is invalid")
+		return
+	}
+
+	result, err := h.service.UpdateSchedule(r.Context(), electionID, actor.ID, newEndTime, req.Reason)
+
+	switch {
+	case err == nil:
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &actor.ID,
+			Action:      "ELECTION_SCHEDULE_CHANGED",
+			Metadata: map[string]any{
+				"election_id":  electionID,
+				"title":        result.Title,
+				"new_end_time": result.EndTime,
+				"reason":       req.Reason,
+			},
+			IPAddress: httpx.ClientIP(r),
+			UserAgent: r.Header.Get("User-Agent"),
+		})
+		httpx.JSON(w, http.StatusOK, result)
+
+	case errors.Is(err, ErrNotFound):
+		httpx.Error(w, http.StatusNotFound, "no such election")
+
+	case errors.Is(err, ErrElectionNotLive):
+		httpx.Error(w, http.StatusConflict, err.Error())
+
+	case errors.Is(err, ErrScheduleUnchanged), errors.Is(err, ErrInvalidInput):
+		httpx.Error(w, http.StatusBadRequest, err.Error())
+
+	default:
+		log.Printf("updating election schedule failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to update schedule")
+	}
+}
+
+func (h *Handler) listScheduleChanges(w http.ResponseWriter, r *http.Request) {
+	if _, err := h.authService.Authorize(w, r, dashboardRoles...); err != nil {
+		httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	changes, err := h.service.ListScheduleChanges(r.Context(), r.PathValue("id"))
+	if err != nil {
+		log.Printf("listing schedule changes failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to list schedule changes")
+		return
+	}
+
+	httpx.JSON(w, http.StatusOK, changes)
 }
 
 func (h *Handler) logAudit(ctx context.Context, entry audit.Entry) {

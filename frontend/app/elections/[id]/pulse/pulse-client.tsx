@@ -110,6 +110,28 @@ export function PulseClient({ electionId }: { electionId: string }) {
       <div className="mt-10 border-t border-line pt-6">
         <AbstentionList portfolios={snapshot.portfolioAbstention} />
       </div>
+
+      {snapshot.scheduleChanges.length > 0 && (
+        <div className="mt-10 border-t border-line pt-6">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
+            Schedule changes
+          </h3>
+          <ul className="mt-3 flex flex-col gap-3">
+            {snapshot.scheduleChanges.map((c) => (
+              <li key={c.createdAt} className="text-sm">
+                <p className="text-ink-muted">
+                  <span className="font-medium text-ink">
+                    {new Date(c.createdAt).toLocaleString()}
+                  </span>{" "}
+                  — end time changed from {new Date(c.previousEndTime).toLocaleString()} to{" "}
+                  {new Date(c.newEndTime).toLocaleString()}.
+                </p>
+                <p className="mt-0.5 text-ink-faint">Reason: {c.reason}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

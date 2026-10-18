@@ -58,12 +58,24 @@ type PortfolioAbstention struct {
 	Abstentions *int   `json:"abstentions"`
 }
 
+// ScheduleChange is the actor-free public projection of
+// election.ScheduleChange - who made the call stays internal, but if the
+// posted voting window changed, anyone watching should see that it did
+// and why.
+type ScheduleChange struct {
+	PreviousEndTime time.Time `json:"previousEndTime"`
+	NewEndTime      time.Time `json:"newEndTime"`
+	Reason          string    `json:"reason"`
+	CreatedAt       time.Time `json:"createdAt"`
+}
+
 type Snapshot struct {
 	Election            ElectionInfo          `json:"election"`
 	EligibleCount       int                   `json:"eligibleCount"`
 	VotedCount          int                   `json:"votedCount"`
 	TurnoutSeries       []TurnoutPoint        `json:"turnoutSeries"`
 	PortfolioAbstention []PortfolioAbstention `json:"portfolioAbstention"`
+	ScheduleChanges     []ScheduleChange      `json:"scheduleChanges"`
 	RefreshedAt         time.Time             `json:"refreshedAt"`
 }
 
@@ -112,6 +124,26 @@ func (s *Service) GetSnapshot(ctx context.Context, electionID string) (*Snapshot
 		}
 	}
 
+	// Read live, not cached - this is specifically about disclosing an
+	// in-progress change to the posted rules, so it shouldn't lag behind
+	// by the same TTL that's fine for turnout numbers. The underlying
+	// table isn't one of the three this package otherwise never touches
+	// directly (votes/voter_credentials/electorate_voters) - it holds no
+	// vote content or voter PII, just the election's own schedule history.
+	changes, err := s.election.ListScheduleChanges(ctx, electionID)
+	if err != nil {
+		return nil, fmt.Errorf("listing schedule changes: %w", err)
+	}
+	publicChanges := make([]ScheduleChange, 0, len(changes))
+	for _, c := range changes {
+		publicChanges = append(publicChanges, ScheduleChange{
+			PreviousEndTime: c.PreviousEndTime,
+			NewEndTime:      c.NewEndTime,
+			Reason:          c.Reason,
+			CreatedAt:       c.CreatedAt,
+		})
+	}
+
 	return &Snapshot{
 		Election: ElectionInfo{
 			ID:          e.ID,
@@ -125,6 +157,7 @@ func (s *Service) GetSnapshot(ctx context.Context, electionID string) (*Snapshot
 		VotedCount:          row.VotedCount,
 		TurnoutSeries:       row.TurnoutSeries,
 		PortfolioAbstention: row.PortfolioAbstention,
+		ScheduleChanges:     publicChanges,
 		RefreshedAt:         row.RefreshedAt,
 	}, nil
 }

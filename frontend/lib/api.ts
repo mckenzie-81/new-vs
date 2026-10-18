@@ -368,6 +368,35 @@ export async function archiveElection(electionId: string): Promise<Election> {
   return response.json();
 }
 
+export interface ScheduleChange {
+  id: string;
+  electionId: string;
+  actorUserId: string;
+  actorName: string;
+  previousEndTime: string;
+  newEndTime: string;
+  reason: string;
+  createdAt: string;
+}
+
+export async function updateElectionSchedule(
+  electionId: string,
+  endTime: string,
+  reason: string
+): Promise<Election> {
+  const response = await apiFetch(`/api/elections/${electionId}/schedule`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ endTime, reason }),
+  });
+  return response.json();
+}
+
+export async function listScheduleChanges(electionId: string): Promise<ScheduleChange[]> {
+  const response = await apiFetch(`/api/elections/${electionId}/schedule-changes`);
+  return response.json();
+}
+
 export async function reorderPortfolios(electionId: string, order: OrderEntry[]): Promise<void> {
   await apiFetch(`/api/elections/${electionId}/portfolios/order`, {
     method: "PUT",
@@ -592,6 +621,13 @@ export interface PortfolioAbstention {
   abstentions: number | null;
 }
 
+export interface PulseScheduleChange {
+  previousEndTime: string;
+  newEndTime: string;
+  reason: string;
+  createdAt: string;
+}
+
 export interface PulseSnapshot {
   election: {
     id: string;
@@ -605,6 +641,7 @@ export interface PulseSnapshot {
   votedCount: number;
   turnoutSeries: TurnoutPoint[];
   portfolioAbstention: PortfolioAbstention[];
+  scheduleChanges: PulseScheduleChange[];
   refreshedAt: string;
 }
 

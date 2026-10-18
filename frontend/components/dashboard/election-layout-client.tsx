@@ -26,6 +26,7 @@ import { RejectElectionForm } from "@/components/dashboard/reject-election-form"
 import { SubmitPreviewModal } from "@/components/dashboard/submit-preview-modal";
 import { ApprovalReviewModal } from "@/components/dashboard/approval-review-modal";
 import { ElectionForm } from "@/components/dashboard/election-form";
+import { UpdateScheduleForm } from "@/components/dashboard/update-schedule-form";
 
 function formatRange(startTime: string, endTime: string) {
   const opts: Intl.DateTimeFormatOptions = {
@@ -61,6 +62,7 @@ export function ElectionLayoutClient({ children }: { children: React.ReactNode }
   const [rejectOpen, setRejectOpen] = useState(false);
   const [submitPreviewOpen, setSubmitPreviewOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [updateScheduleOpen, setUpdateScheduleOpen] = useState(false);
 
   const refresh = useCallback(() => {
     getElection(id)
@@ -223,6 +225,12 @@ export function ElectionLayoutClient({ children }: { children: React.ReactNode }
           </SecondaryButton>
         )}
 
+        {canSubmit && election.status === "LIVE" && (
+          <SecondaryButton onClick={() => setUpdateScheduleOpen(true)} disabled={busy}>
+            End early / extend
+          </SecondaryButton>
+        )}
+
         {isApprover && election.status === "PENDING_APPROVAL" && (
           <div className="flex flex-wrap gap-3">
             <SecondaryButton onClick={() => setRejectOpen(true)} disabled={busy} tone="danger">
@@ -312,6 +320,18 @@ export function ElectionLayoutClient({ children }: { children: React.ReactNode }
             election={election}
             onSaved={() => {
               setEditOpen(false);
+              refresh();
+            }}
+          />
+        </Modal>
+      )}
+
+      {updateScheduleOpen && (
+        <Modal title="End early or extend" onClose={() => setUpdateScheduleOpen(false)}>
+          <UpdateScheduleForm
+            election={election}
+            onUpdated={() => {
+              setUpdateScheduleOpen(false);
               refresh();
             }}
           />
