@@ -74,9 +74,9 @@ function CompactCandidateOption({
   );
 }
 
-// "cards": a two-column grid of taller cards - a bigger photo matters more
-// here, bounded by the grid cell rather than the full ballot width, so it
-// doesn't dominate the screen across several candidates and portfolios.
+// "cards": still one per row like compact, but a taller card - a bigger
+// photo front and center, name below it, instead of a small thumbnail
+// beside the name.
 function CardCandidateOption({
   candidate,
   selected,
@@ -90,14 +90,14 @@ function CardCandidateOption({
     <button
       type="button"
       onClick={onSelect}
-      className={`relative w-full border-2 p-2.5 text-center transition-colors duration-150 ${
+      className={`relative w-full border-2 p-4 text-center transition-colors duration-150 ${
         selected ? "border-accent" : "border-line hover:border-ink"
       }`}
     >
-      <span className="absolute left-2 top-2 z-10">
+      <span className="absolute left-3 top-3 z-10">
         <SelectionBadge selected={selected} size="md" />
       </span>
-      <CandidatePhoto candidate={candidate} className="aspect-[3/4] w-full text-3xl" />
+      <CandidatePhoto candidate={candidate} className="mx-auto aspect-[3/4] w-36 text-2xl" />
       <span className="mt-2 block text-sm font-semibold leading-snug text-ink">
         {candidateTicketName(candidate)}
       </span>
@@ -122,10 +122,6 @@ export function CandidateOption({
   return <CompactCandidateOption candidate={candidate} selected={selected} onSelect={onSelect} />;
 }
 
-// The container each style's candidates sit in - compact is a single
-// stacked column, cards is a two-column grid so the bigger photo stays
-// bounded to roughly half the ballot's width instead of stretching full
-// width.
-export function candidateListClassName(style: string) {
-  return style === "cards" ? "grid grid-cols-2 gap-3" : "flex flex-col gap-3";
-}
+// Both styles stack one candidate per row - the difference is the card
+// itself (photo size, layout), not the container.
+export const candidateListClassName = "flex flex-col gap-3";

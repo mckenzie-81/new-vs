@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { ThemeScope } from "@/components/branding/theme-scope";
 import { CandidateOption, candidateListClassName } from "@/components/ballot/candidate-option";
+import { PortfolioBanner } from "@/components/ballot/portfolio-banner";
 import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
@@ -409,24 +410,11 @@ export function VoteClient({ token }: { token: string }) {
             key={p.id}
             className="border-t border-line py-5 first:border-t-0"
           >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-xl font-semibold text-ink">{p.title}</h3>
-                <p className="mt-0.5 text-sm text-ink-faint">
-                  Select one candidate, or leave blank to abstain.
-                </p>
-              </div>
-              {selections[p.id] && (
-                <button
-                  type="button"
-                  onClick={() => resetPortfolio(p.id)}
-                  className="shrink-0 text-sm font-semibold text-ink-faint transition-colors duration-150 hover:text-danger"
-                >
-                  Reset
-                </button>
-              )}
-            </div>
-            <div className={candidateListClassName(election?.ballotStyle ?? DEFAULT_BALLOT_STYLE)}>
+            <PortfolioBanner
+              title={p.title}
+              onReset={selections[p.id] ? () => resetPortfolio(p.id) : undefined}
+            />
+            <div className={`mt-4 ${candidateListClassName}`}>
               {p.candidates.map((c) => (
                 <CandidateOption
                   key={c.id}
