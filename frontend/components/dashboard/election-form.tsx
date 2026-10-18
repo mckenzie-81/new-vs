@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { ElectorateSelector } from "./electorate-selector";
+import { BrandingFields } from "@/components/branding/branding-fields";
 
 // datetime-local inputs need "YYYY-MM-DDTHH:mm" in the browser's local
 // time - this reverses the ISO string we get back from the server into
@@ -38,6 +39,8 @@ export function ElectionForm({
   const [voterVerificationColumns, setVoterVerificationColumns] = useState<string[]>(
     election?.voterVerificationColumns ?? []
   );
+  const [accentColor, setAccentColor] = useState(election?.accentColor ?? "");
+  const [logoUrl, setLogoUrl] = useState(election?.logoUrl ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,6 +67,8 @@ export function ElectionForm({
       electorateDatabaseId,
       electorateFilter,
       voterVerificationColumns,
+      accentColor,
+      logoUrl,
     };
 
     setSubmitting(true);
@@ -129,6 +134,33 @@ export function ElectionForm({
         onFilterChange={setElectorateFilter}
         onVerificationColumnsChange={setVoterVerificationColumns}
       />
+
+      <div>
+        <p className="text-sm font-semibold text-ink">Branding</p>
+        <p className="mt-1 text-sm text-ink-muted">
+          Optional - leave blank to use the system default.
+        </p>
+        <div className="mt-3">
+          <BrandingFields
+            accentColor={accentColor}
+            logoUrl={logoUrl}
+            onAccentColorChange={setAccentColor}
+            onLogoUrlChange={setLogoUrl}
+          />
+        </div>
+        {(accentColor || logoUrl) && (
+          <button
+            type="button"
+            onClick={() => {
+              setAccentColor("");
+              setLogoUrl("");
+            }}
+            className="mt-2 text-sm font-semibold text-accent hover:underline"
+          >
+            Use system default
+          </button>
+        )}
+      </div>
 
       {error && <p className="text-sm text-danger">{error}</p>}
 

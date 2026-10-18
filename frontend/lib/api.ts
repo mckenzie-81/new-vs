@@ -147,6 +147,8 @@ export interface Election {
   electorateDatabaseId: string | null;
   electorateFilter: Record<string, string>;
   voterVerificationColumns: string[];
+  accentColor: string | null;
+  logoUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -159,6 +161,8 @@ export interface CreateElectionInput {
   electorateDatabaseId: string;
   electorateFilter: Record<string, string>;
   voterVerificationColumns: string[];
+  accentColor: string;
+  logoUrl: string;
 }
 
 export async function createElection(input: CreateElectionInput): Promise<Election> {
@@ -560,6 +564,8 @@ export interface VoteElectionSummary {
   description: string | null;
   startTime: string;
   endTime: string;
+  accentColor: string | null;
+  logoUrl: string | null;
 }
 
 export interface VoteTokenStatus {
@@ -636,6 +642,8 @@ export interface PulseSnapshot {
     status: string;
     startTime: string;
     endTime: string;
+    accentColor: string | null;
+    logoUrl: string | null;
   };
   eligibleCount: number;
   votedCount: number;
@@ -647,5 +655,30 @@ export interface PulseSnapshot {
 
 export async function getElectionPulse(electionId: string): Promise<PulseSnapshot> {
   const response = await apiFetch(`/api/elections/${electionId}/pulse`);
+  return response.json();
+}
+
+// --- Branding (system-wide default, public read) ---
+
+export interface BrandingSettings {
+  accentColor: string | null;
+  logoUrl: string | null;
+  updatedAt: string;
+}
+
+export async function getBranding(): Promise<BrandingSettings> {
+  const response = await apiFetch("/api/settings/branding");
+  return response.json();
+}
+
+export async function updateBranding(
+  accentColor: string,
+  logoUrl: string
+): Promise<BrandingSettings> {
+  const response = await apiFetch("/api/settings/branding", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accentColor, logoUrl }),
+  });
   return response.json();
 }

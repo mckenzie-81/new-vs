@@ -2,22 +2,30 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSession, SessionUser } from "@/lib/api";
+import { getSession, getBranding, SessionUser } from "@/lib/api";
 import { Sidebar, MobileSidebar } from "@/components/dashboard/sidebar";
 import { Header } from "@/components/dashboard/header";
 import { DashboardUserProvider } from "@/components/dashboard/user-context";
+import { ThemeScope } from "@/components/branding/theme-scope";
 
 export function DashboardLayoutClient({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
   const [checking, setChecking] = useState(true);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [accentColor, setAccentColor] = useState<string | null>(null);
 
   useEffect(() => {
     getSession()
       .then(setUser)
       .catch(() => router.replace("/login"))
       .finally(() => setChecking(false));
+    // Not gated on the session check above - the system accent is public
+    // and applies to the whole dashboard shell regardless of who's
+    // signed in, so there's no reason to wait on it.
+    getBranding()
+      .then((settings) => setAccentColor(settings.accentColor))
+      .catch(() => {});
   }, [router]);
 
   if (checking || !user) {
@@ -26,15 +34,17 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
 
   return (
     <DashboardUserProvider user={user}>
-      <div className="flex min-h-screen bg-page">
-        <Sidebar role={user.role} />
-        <MobileSidebar role={user.role} open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
+      <ThemeScope accentColor={accentColor}>
+        <div className="flex min-h-screen bg-page">
+          <Sidebar role={user.role} />
+          <MobileSidebar role={user.role} open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
 
-        <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-          <Header user={user} onMenuClick={() => setMobileNavOpen(true)} />
-          <main className="min-w-0 flex-1 p-6">{children}</main>
+          <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+            <Header user={user} onMenuClick={() => setMobileNavOpen(true)} />
+            <main className="min-w-0 flex-1 p-6">{children}</main>
+          </div>
         </div>
-      </div>
+      </ThemeScope>
     </DashboardUserProvider>
   );
 }

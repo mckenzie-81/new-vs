@@ -110,6 +110,8 @@ type createRequest struct {
 	ElectorateDatabaseID     string            `json:"electorateDatabaseId"`
 	ElectorateFilter         map[string]string `json:"electorateFilter"`
 	VoterVerificationColumns []string          `json:"voterVerificationColumns"`
+	AccentColor              string            `json:"accentColor"`
+	LogoURL                  string            `json:"logoUrl"`
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
@@ -151,6 +153,8 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		ElectorateDatabaseID:     req.ElectorateDatabaseID,
 		ElectorateFilter:         req.ElectorateFilter,
 		VoterVerificationColumns: req.VoterVerificationColumns,
+		AccentColor:              req.AccentColor,
+		LogoURL:                  req.LogoURL,
 	})
 
 	switch {
@@ -212,6 +216,8 @@ func (h *Handler) updateElection(w http.ResponseWriter, r *http.Request) {
 		ElectorateDatabaseID:     req.ElectorateDatabaseID,
 		ElectorateFilter:         req.ElectorateFilter,
 		VoterVerificationColumns: req.VoterVerificationColumns,
+		AccentColor:              req.AccentColor,
+		LogoURL:                  req.LogoURL,
 	})
 
 	switch {

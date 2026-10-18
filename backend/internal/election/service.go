@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"backend/internal/branding"
 	"backend/internal/electorate"
 
 	"github.com/jackc/pgx/v5"
@@ -43,6 +44,8 @@ type Election struct {
 	ElectorateDatabaseID     *string           `json:"electorateDatabaseId"`
 	ElectorateFilter         map[string]string `json:"electorateFilter"`
 	VoterVerificationColumns []string          `json:"voterVerificationColumns"`
+	AccentColor              *string           `json:"accentColor"`
+	LogoURL                  *string           `json:"logoUrl"`
 	CreatedAt                time.Time         `json:"createdAt"`
 	UpdatedAt                time.Time         `json:"updatedAt"`
 }
@@ -55,25 +58,41 @@ type CreateInput struct {
 	ElectorateDatabaseID     string
 	ElectorateFilter         map[string]string
 	VoterVerificationColumns []string
+	AccentColor              string
+	LogoURL                  string
 }
 
 const maxVerificationColumns = 2
+
+// validatedInput is validateElectionInput's result - a struct rather than
+// a growing positional tuple, since every new election attribute (most
+// recently voter_verification_columns, now accent_color/logo_url) was
+// making that tuple longer and easier to mix up by position.
+type validatedInput struct {
+	title                string
+	description          *string
+	electorateDatabaseID *string
+	filter               map[string]string
+	verificationColumns  []string
+	accentColor          *string
+	logoURL              *string
+}
 
 // validateElectionInput checks the fields every election needs regardless
 // of lifecycle stage. The electorate link is deliberately not one of them -
 // a draft can exist without a database attached yet, since that's meant to
 // be addable later while managing the draft. It's only required before
 // submitting for approval (see SubmitForApproval).
-func (s *Service) validateElectionInput(ctx context.Context, in CreateInput) (string, *string, *string, map[string]string, []string, error) {
+func (s *Service) validateElectionInput(ctx context.Context, in CreateInput) (*validatedInput, error) {
 	title := strings.TrimSpace(in.Title)
 	if title == "" {
-		return "", nil, nil, nil, nil, fmt.Errorf("%w: title is required", ErrInvalidInput)
+		return nil, fmt.Errorf("%w: title is required", ErrInvalidInput)
 	}
 	if len(title) > maxTitleLength {
-		return "", nil, nil, nil, nil, fmt.Errorf("%w: title must be %d characters or fewer", ErrInvalidInput, maxTitleLength)
+		return nil, fmt.Errorf("%w: title must be %d characters or fewer", ErrInvalidInput, maxTitleLength)
 	}
 	if !in.EndTime.After(in.StartTime) {
-		return "", nil, nil, nil, nil, fmt.Errorf("%w: end time must be after start time", ErrInvalidInput)
+		return nil, fmt.Errorf("%w: end time must be after start time", ErrInvalidInput)
 	}
 
 	var electorateDatabaseID *string
@@ -81,10 +100,10 @@ func (s *Service) validateElectionInput(ctx context.Context, in CreateInput) (st
 	if trimmed := strings.TrimSpace(in.ElectorateDatabaseID); trimmed != "" {
 		db, err := s.electorate.GetDatabase(ctx, trimmed)
 		if errors.Is(err, electorate.ErrNotFound) {
-			return "", nil, nil, nil, nil, ErrElectorateNotFound
+			return nil, ErrElectorateNotFound
 		}
 		if err != nil {
-			return "", nil, nil, nil, nil, fmt.Errorf("checking electorate database: %w", err)
+			return nil, fmt.Errorf("checking electorate database: %w", err)
 		}
 		electorateDatabaseID = &trimmed
 		allColumns = db.Columns
@@ -107,12 +126,12 @@ func (s *Service) validateElectionInput(ctx context.Context, in CreateInput) (st
 	// produce "0 eligible" rather than fail loudly - catch it here instead.
 	for field := range in.ElectorateFilter {
 		if containsFold(sensitiveColumns, field) {
-			return "", nil, nil, nil, nil, fmt.Errorf("%w: %q holds hashed values and can't be used as an eligibility filter", ErrInvalidInput, field)
+			return nil, fmt.Errorf("%w: %q holds hashed values and can't be used as an eligibility filter", ErrInvalidInput, field)
 		}
 	}
 
 	if len(in.VoterVerificationColumns) > maxVerificationColumns {
-		return "", nil, nil, nil, nil, fmt.Errorf("%w: at most %d verification columns are allowed", ErrInvalidInput, maxVerificationColumns)
+		return nil, fmt.Errorf("%w: at most %d verification columns are allowed", ErrInvalidInput, maxVerificationColumns)
 	}
 	verificationColumns := make([]string, 0, len(in.VoterVerificationColumns))
 	seen := map[string]bool{}
@@ -122,7 +141,7 @@ func (s *Service) validateElectionInput(ctx context.Context, in CreateInput) (st
 			continue
 		}
 		if !containsFold(verifiableColumns, trimmed) {
-			return "", nil, nil, nil, nil, fmt.Errorf("%w: %q isn't a column on the linked electorate database", ErrInvalidInput, trimmed)
+			return nil, fmt.Errorf("%w: %q isn't a column on the linked electorate database", ErrInvalidInput, trimmed)
 		}
 		key := strings.ToLower(trimmed)
 		if seen[key] {
@@ -142,7 +161,34 @@ func (s *Service) validateElectionInput(ctx context.Context, in CreateInput) (st
 		filter = map[string]string{}
 	}
 
-	return title, description, electorateDatabaseID, filter, verificationColumns, nil
+	// Empty means "inherit the system default" - stored as NULL, same
+	// convention as ElectorateDatabaseID.
+	var accentColor *string
+	if trimmed := strings.TrimSpace(in.AccentColor); trimmed != "" {
+		normalized, err := branding.ValidateAccentColor(trimmed)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s", ErrInvalidInput, err.Error())
+		}
+		accentColor = &normalized
+	}
+
+	var logoURL *string
+	if trimmed := strings.TrimSpace(in.LogoURL); trimmed != "" {
+		if len(trimmed) > maxPhotoURLLength {
+			return nil, fmt.Errorf("%w: logo URL is too long", ErrInvalidInput)
+		}
+		logoURL = &trimmed
+	}
+
+	return &validatedInput{
+		title:                title,
+		description:          description,
+		electorateDatabaseID: electorateDatabaseID,
+		filter:               filter,
+		verificationColumns:  verificationColumns,
+		accentColor:          accentColor,
+		logoURL:              logoURL,
+	}, nil
 }
 
 func containsFold(list []string, target string) bool {
@@ -155,21 +201,21 @@ func containsFold(list []string, target string) bool {
 }
 
 func (s *Service) Create(ctx context.Context, actorID string, in CreateInput) (*Election, error) {
-	title, description, electorateDatabaseID, filter, verificationColumns, err := s.validateElectionInput(ctx, in)
+	v, err := s.validateElectionInput(ctx, in)
 	if err != nil {
 		return nil, err
 	}
 
 	var e Election
 	err = s.pool.QueryRow(ctx, `
-		INSERT INTO elections (title, description, start_time, end_time, created_by, electorate_database_id, electorate_filter, voter_verification_columns)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO elections (title, description, start_time, end_time, created_by, electorate_database_id, electorate_filter, voter_verification_columns, accent_color, logo_url)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, title, description, status, start_time, end_time, created_by, approved_by, rejection_reason,
-			electorate_database_id, COALESCE(electorate_filter, '{}'::jsonb), voter_verification_columns, created_at, updated_at
-	`, title, description, in.StartTime, in.EndTime, actorID, electorateDatabaseID, filter, verificationColumns).Scan(
+			electorate_database_id, COALESCE(electorate_filter, '{}'::jsonb), voter_verification_columns, accent_color, logo_url, created_at, updated_at
+	`, v.title, v.description, in.StartTime, in.EndTime, actorID, v.electorateDatabaseID, v.filter, v.verificationColumns, v.accentColor, v.logoURL).Scan(
 		&e.ID, &e.Title, &e.Description, &e.Status, &e.StartTime, &e.EndTime,
 		&e.CreatedBy, &e.ApprovedBy, &e.RejectionReason,
-		&e.ElectorateDatabaseID, &e.ElectorateFilter, &e.VoterVerificationColumns, &e.CreatedAt, &e.UpdatedAt,
+		&e.ElectorateDatabaseID, &e.ElectorateFilter, &e.VoterVerificationColumns, &e.AccentColor, &e.LogoURL, &e.CreatedAt, &e.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating election: %w", err)
@@ -190,7 +236,7 @@ func (s *Service) Update(ctx context.Context, electionID string, in CreateInput)
 		return nil, ErrElectionNotDraft
 	}
 
-	title, description, electorateDatabaseID, filter, verificationColumns, err := s.validateElectionInput(ctx, in)
+	v, err := s.validateElectionInput(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -199,14 +245,15 @@ func (s *Service) Update(ctx context.Context, electionID string, in CreateInput)
 	err = s.pool.QueryRow(ctx, `
 		UPDATE elections
 		SET title = $1, description = $2, start_time = $3, end_time = $4,
-			electorate_database_id = $5, electorate_filter = $6, voter_verification_columns = $7, updated_at = now()
-		WHERE id = $8
+			electorate_database_id = $5, electorate_filter = $6, voter_verification_columns = $7,
+			accent_color = $8, logo_url = $9, updated_at = now()
+		WHERE id = $10
 		RETURNING id, title, description, status, start_time, end_time, created_by, approved_by, rejection_reason,
-			electorate_database_id, COALESCE(electorate_filter, '{}'::jsonb), voter_verification_columns, created_at, updated_at
-	`, title, description, in.StartTime, in.EndTime, electorateDatabaseID, filter, verificationColumns, electionID).Scan(
+			electorate_database_id, COALESCE(electorate_filter, '{}'::jsonb), voter_verification_columns, accent_color, logo_url, created_at, updated_at
+	`, v.title, v.description, in.StartTime, in.EndTime, v.electorateDatabaseID, v.filter, v.verificationColumns, v.accentColor, v.logoURL, electionID).Scan(
 		&updated.ID, &updated.Title, &updated.Description, &updated.Status, &updated.StartTime, &updated.EndTime,
 		&updated.CreatedBy, &updated.ApprovedBy, &updated.RejectionReason,
-		&updated.ElectorateDatabaseID, &updated.ElectorateFilter, &updated.VoterVerificationColumns, &updated.CreatedAt, &updated.UpdatedAt,
+		&updated.ElectorateDatabaseID, &updated.ElectorateFilter, &updated.VoterVerificationColumns, &updated.AccentColor, &updated.LogoURL, &updated.CreatedAt, &updated.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("updating election: %w", err)
@@ -225,7 +272,7 @@ func (s *Service) List(ctx context.Context) ([]Election, error) {
 
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, title, description, status, start_time, end_time, created_by, approved_by, rejection_reason,
-			electorate_database_id, COALESCE(electorate_filter, '{}'::jsonb), voter_verification_columns, created_at, updated_at
+			electorate_database_id, COALESCE(electorate_filter, '{}'::jsonb), voter_verification_columns, accent_color, logo_url, created_at, updated_at
 		FROM elections
 		ORDER BY created_at DESC
 	`)
@@ -240,7 +287,7 @@ func (s *Service) List(ctx context.Context) ([]Election, error) {
 		if err := rows.Scan(
 			&e.ID, &e.Title, &e.Description, &e.Status, &e.StartTime, &e.EndTime,
 			&e.CreatedBy, &e.ApprovedBy, &e.RejectionReason,
-			&e.ElectorateDatabaseID, &e.ElectorateFilter, &e.VoterVerificationColumns, &e.CreatedAt, &e.UpdatedAt,
+			&e.ElectorateDatabaseID, &e.ElectorateFilter, &e.VoterVerificationColumns, &e.AccentColor, &e.LogoURL, &e.CreatedAt, &e.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scanning election: %w", err)
 		}
@@ -261,13 +308,13 @@ func (s *Service) Get(ctx context.Context, id string) (*Election, error) {
 	var e Election
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, title, description, status, start_time, end_time, created_by, approved_by, rejection_reason,
-			electorate_database_id, COALESCE(electorate_filter, '{}'::jsonb), voter_verification_columns, created_at, updated_at
+			electorate_database_id, COALESCE(electorate_filter, '{}'::jsonb), voter_verification_columns, accent_color, logo_url, created_at, updated_at
 		FROM elections
 		WHERE id = $1
 	`, id).Scan(
 		&e.ID, &e.Title, &e.Description, &e.Status, &e.StartTime, &e.EndTime,
 		&e.CreatedBy, &e.ApprovedBy, &e.RejectionReason,
-		&e.ElectorateDatabaseID, &e.ElectorateFilter, &e.VoterVerificationColumns, &e.CreatedAt, &e.UpdatedAt,
+		&e.ElectorateDatabaseID, &e.ElectorateFilter, &e.VoterVerificationColumns, &e.AccentColor, &e.LogoURL, &e.CreatedAt, &e.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound

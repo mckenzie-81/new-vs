@@ -1,10 +1,79 @@
-import { StubPage } from "@/components/dashboard/stub-page";
+"use client";
+
+import { useEffect, useState } from "react";
+import { getBranding, updateBranding, ApiError } from "@/lib/api";
+import { AdminHeader } from "@/components/dashboard/admin-header";
+import { Breadcrumbs } from "@/components/dashboard/breadcrumbs";
+import { Button } from "@/components/ui/button";
+import { BrandingFields } from "@/components/branding/branding-fields";
 
 export default function SettingsPage() {
+  const [accentColor, setAccentColor] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    getBranding()
+      .then((settings) => {
+        setAccentColor(settings.accentColor ?? "");
+        setLogoUrl(settings.logoUrl ?? "");
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true));
+  }, []);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSaved(false);
+    setSaving(true);
+    try {
+      const settings = await updateBranding(accentColor, logoUrl);
+      setAccentColor(settings.accentColor ?? "");
+      setLogoUrl(settings.logoUrl ?? "");
+      setSaved(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to save.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <StubPage
-      title="Settings"
-      description="System-wide configuration."
-    />
+    <div>
+      <Breadcrumbs items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Settings" }]} />
+      <AdminHeader title="Settings" intro="System-wide configuration." />
+
+      <div className="max-w-md border-t border-line pt-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">Branding</h2>
+        <p className="mt-1 text-sm text-ink-muted">
+          The default look for the dashboard and for any election that hasn&apos;t set its own
+          branding. Leave blank to use the built-in defaults.
+        </p>
+
+        {!loaded ? (
+          <p className="py-10 text-sm text-ink-faint">Loading...</p>
+        ) : (
+          <form onSubmit={handleSave} className="mt-5 flex flex-col gap-4">
+            <BrandingFields
+              accentColor={accentColor}
+              logoUrl={logoUrl}
+              onAccentColorChange={setAccentColor}
+              onLogoUrlChange={setLogoUrl}
+            />
+
+            {error && <p className="text-sm text-danger">{error}</p>}
+            {saved && !error && <p className="text-sm text-success">Saved.</p>}
+
+            <Button type="submit" variant="accent" disabled={saving} className="mt-1" fullWidth={false}>
+              {saving ? "Saving..." : "Save"}
+            </Button>
+          </form>
+        )}
+      </div>
+    </div>
   );
 }

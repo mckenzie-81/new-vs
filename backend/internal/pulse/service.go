@@ -40,6 +40,8 @@ type ElectionInfo struct {
 	Status      string    `json:"status"`
 	StartTime   time.Time `json:"startTime"`
 	EndTime     time.Time `json:"endTime"`
+	AccentColor *string   `json:"accentColor"`
+	LogoURL     *string   `json:"logoUrl"`
 }
 
 type TurnoutPoint struct {
@@ -152,6 +154,8 @@ func (s *Service) GetSnapshot(ctx context.Context, electionID string) (*Snapshot
 			Status:      e.Status,
 			StartTime:   e.StartTime,
 			EndTime:     e.EndTime,
+			AccentColor: e.AccentColor,
+			LogoURL:     e.LogoURL,
 		},
 		EligibleCount:       row.EligibleCount,
 		VotedCount:          row.VotedCount,

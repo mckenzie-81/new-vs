@@ -7,6 +7,7 @@ import (
 
 	"backend/internal/auth"
 	"backend/internal/bootstrap"
+	"backend/internal/branding"
 	"backend/internal/config"
 	"backend/internal/db"
 	"backend/internal/election"
@@ -52,6 +53,9 @@ func main() {
 	pulseService := pulse.NewService(pool, electionService, electorateService)
 	pulseHandler := pulse.NewHandler(pulseService)
 
+	brandingService := branding.NewService(pool)
+	brandingHandler := branding.NewHandler(brandingService, authService)
+
 	mux := http.NewServeMux()
 	bootstrapHandler.Register(mux)
 	authHandler.Register(mux)
@@ -59,6 +63,7 @@ func main() {
 	electorateHandler.Register(mux)
 	voterHandler.Register(mux)
 	pulseHandler.Register(mux)
+	brandingHandler.Register(mux)
 
 	handler := httpx.CORS(cfg.AppBaseURL, mux)
 

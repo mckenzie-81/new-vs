@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getElectionPulse, ApiError, PulseSnapshot } from "@/lib/api";
+import { getElectionPulse, getBranding, ApiError, PulseSnapshot } from "@/lib/api";
 import { CenteredMessage } from "@/components/layout/centered-card";
 import { Badge } from "@/components/dashboard/badge";
 import { StatRow, Stat } from "@/components/dashboard/stat-row";
 import { TurnoutChart } from "@/components/pulse/turnout-chart";
 import { AbstentionList } from "@/components/pulse/abstention-list";
+import { ThemeScope } from "@/components/branding/theme-scope";
 
 const POLL_INTERVAL_MS = 15_000;
 
@@ -27,6 +28,17 @@ export function PulseClient({ electionId }: { electionId: string }) {
   const [snapshot, setSnapshot] = useState<PulseSnapshot | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [systemAccentColor, setSystemAccentColor] = useState<string | null>(null);
+  const [systemLogoUrl, setSystemLogoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    getBranding()
+      .then((settings) => {
+        setSystemAccentColor(settings.accentColor);
+        setSystemLogoUrl(settings.logoUrl);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let stopped = false;
@@ -93,8 +105,16 @@ export function PulseClient({ electionId }: { electionId: string }) {
     },
   ];
 
+  const effectiveAccentColor = election.accentColor ?? systemAccentColor;
+  const effectiveLogoUrl = election.logoUrl ?? systemLogoUrl;
+
   return (
+    <ThemeScope accentColor={effectiveAccentColor}>
     <div className="mx-auto max-w-3xl px-6 py-12">
+      {effectiveLogoUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={effectiveLogoUrl} alt="" className="mb-4 h-10 object-contain" />
+      )}
       <div className="flex items-center gap-2">
         <h1 className="text-2xl font-bold tracking-tight">{election.title}</h1>
         <Badge status={election.status} />
@@ -141,5 +161,6 @@ export function PulseClient({ electionId }: { electionId: string }) {
         </div>
       )}
     </div>
+    </ThemeScope>
   );
 }

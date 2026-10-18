@@ -27,6 +27,7 @@ import { SubmitPreviewModal } from "@/components/dashboard/submit-preview-modal"
 import { ApprovalReviewModal } from "@/components/dashboard/approval-review-modal";
 import { ElectionForm } from "@/components/dashboard/election-form";
 import { UpdateScheduleForm } from "@/components/dashboard/update-schedule-form";
+import { ThemeScope } from "@/components/branding/theme-scope";
 
 function formatRange(startTime: string, endTime: string) {
   const opts: Intl.DateTimeFormatOptions = {
@@ -166,6 +167,10 @@ export function ElectionLayoutClient({ children }: { children: React.ReactNode }
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
+            {election.logoUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={election.logoUrl} alt="" className="h-8 w-8 shrink-0 object-contain" />
+            )}
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{election.title}</h1>
             <Badge status={election.status} />
           </div>
@@ -263,7 +268,9 @@ export function ElectionLayoutClient({ children }: { children: React.ReactNode }
         })}
       </div>
 
-      <ElectionProvider value={{ election, assignedAdmins, refresh }}>{children}</ElectionProvider>
+      <ThemeScope accentColor={election.accentColor}>
+        <ElectionProvider value={{ election, assignedAdmins, refresh }}>{children}</ElectionProvider>
+      </ThemeScope>
 
       <ConfirmDialog
         open={confirmDeleteOpen}
