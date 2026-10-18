@@ -61,7 +61,11 @@ export default function ElectionsPage() {
       )}
 
       {createOpen && (
-        <Modal title="Create an election" onClose={() => setCreateOpen(false)}>
+        <Modal
+          title="Create an election"
+          onClose={() => setCreateOpen(false)}
+          closeOnOverlayClick={false}
+        >
           <ElectionForm
             onSaved={() => {
               setCreateOpen(false);

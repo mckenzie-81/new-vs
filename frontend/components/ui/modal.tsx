@@ -9,20 +9,30 @@ export function Modal({
   title,
   onClose,
   size = "sm",
+  closeOnOverlayClick = true,
   children,
 }: {
   title: string;
   onClose: () => void;
   size?: "sm" | "lg";
+  // False for the create-election modal specifically - a long form is too
+  // easy to lose to a stray click just outside it, and unlike most other
+  // modals here there's nothing destructive about leaving it open by
+  // mistake. Every other modal keeps the default click-outside-to-close.
+  closeOnOverlayClick?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button
-        aria-label="Close"
-        className="overlay-fade-in absolute inset-0 bg-black/30"
-        onClick={onClose}
-      />
+      {closeOnOverlayClick ? (
+        <button
+          aria-label="Close"
+          className="overlay-fade-in absolute inset-0 bg-black/30"
+          onClick={onClose}
+        />
+      ) : (
+        <div aria-hidden className="overlay-fade-in absolute inset-0 bg-black/30" />
+      )}
       <div
         className={`panel-ease-in relative flex max-h-[calc(100vh-2rem)] w-full flex-col ${widthClasses[size]} border border-line bg-surface`}
       >
