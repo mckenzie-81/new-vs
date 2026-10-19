@@ -61,6 +61,13 @@ const actionLabel: Record<string, string> = {
   VOTER_CREDENTIAL_UNLOCKED: "Voter credential unlocked",
   VOTE_CAST: "Vote cast",
   AUDIT_INTEGRITY_ALERT_ACKNOWLEDGED: "Audit integrity alert acknowledged",
+  LOGIN_AWAITING_TOTP: "Password verified, awaiting 2FA code",
+  LOGIN_TOTP_FAILED: "2FA code incorrect",
+  LOGIN_TOTP_LOCKED: "2FA login locked (too many attempts)",
+  LOGIN_SUCCEEDED_VIA_RECOVERY_CODE: "Logged in with a 2FA recovery code",
+  TOTP_ENABLED: "Two-factor authentication enabled",
+  TOTP_DISABLED: "Two-factor authentication disabled",
+  TOTP_ADMIN_RESET: "Two-factor authentication reset by an admin",
 };
 
 function describe(entry: AuditLogEntry) {

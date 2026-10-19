@@ -411,12 +411,13 @@ func (s *Service) Confirm(ctx context.Context, rawToken string, password string)
 }
 
 type Person struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Email     string    `json:"email"`
-	Role      string    `json:"role"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Email       string    `json:"email"`
+	Role        string    `json:"role"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"createdAt"`
+	TOTPEnabled bool      `json:"totpEnabled"`
 }
 
 // ListPeople returns everyone who has ever been invited or bootstrapped,
@@ -424,7 +425,7 @@ type Person struct {
 // has accounts for (tens, not thousands).
 func (s *Service) ListPeople(ctx context.Context) ([]Person, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, name, email, role, status, created_at
+		SELECT id, name, email, role, status, created_at, totp_enabled_at IS NOT NULL
 		FROM users
 		ORDER BY created_at DESC
 	`)
@@ -436,7 +437,7 @@ func (s *Service) ListPeople(ctx context.Context) ([]Person, error) {
 	people := []Person{}
 	for rows.Next() {
 		var p Person
-		if err := rows.Scan(&p.ID, &p.Name, &p.Email, &p.Role, &p.Status, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.Email, &p.Role, &p.Status, &p.CreatedAt, &p.TOTPEnabled); err != nil {
 			return nil, fmt.Errorf("scanning person: %w", err)
 		}
 		people = append(people, p)

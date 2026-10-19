@@ -35,6 +35,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/people/{id}", h.revokeInvite)
 	mux.HandleFunc("POST /api/people/{id}/disable", h.disableAccount)
 	mux.HandleFunc("POST /api/people/{id}/reactivate", h.reactivateAccount)
+	mux.HandleFunc("POST /api/people/{id}/reset-totp", h.resetTOTP)
 }
 
 func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
@@ -440,6 +441,45 @@ func (h *Handler) reactivateAccount(w http.ResponseWriter, r *http.Request) {
 	default:
 		log.Printf("account reactivate failed: %v", err)
 		httpx.Error(w, http.StatusInternalServerError, "failed to reactivate account")
+	}
+}
+
+// resetTOTP is the escape hatch for someone who's lost both their
+// authenticator device and their recovery codes, with nowhere else to
+// turn - the same shape as disableAccount/reactivateAccount above, just
+// clearing 2FA instead of account status. The person can set it up
+// fresh from Settings on their next login.
+func (h *Handler) resetTOTP(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.authService.Authorize(w, r, "SYSTEMADMIN")
+	if err != nil {
+		if errors.Is(err, auth.ErrForbidden) {
+			httpx.Error(w, http.StatusForbidden, "not authorized")
+		} else {
+			httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+		}
+		return
+	}
+
+	id := r.PathValue("id")
+	name, email, err := h.authService.AdminResetTOTP(r.Context(), id)
+
+	switch {
+	case err == nil:
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &actor.ID,
+			Action:      "TOTP_ADMIN_RESET",
+			Metadata:    map[string]any{"target_name": name, "target_email": email},
+			IPAddress:   httpx.ClientIP(r),
+			UserAgent:   r.Header.Get("User-Agent"),
+		})
+		httpx.JSON(w, http.StatusOK, map[string]string{"status": "reset"})
+
+	case errors.Is(err, auth.ErrTOTPNotEnabled):
+		httpx.Error(w, http.StatusConflict, err.Error())
+
+	default:
+		log.Printf("resetting totp failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to reset 2FA")
 	}
 }
 

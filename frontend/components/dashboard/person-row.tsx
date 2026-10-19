@@ -7,6 +7,7 @@ import {
   revokeInvite,
   disableAccount,
   reactivateAccount,
+  resetUserTOTP,
   InvitableRole,
   Person,
 } from "@/lib/api";
@@ -25,7 +26,7 @@ export function PersonRow({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<"revoke" | "disable" | null>(null);
+  const [confirmAction, setConfirmAction] = useState<"revoke" | "disable" | "reset-totp" | null>(null);
 
   const joined = new Date(person.createdAt).toLocaleDateString(undefined, {
     month: "short",
@@ -84,6 +85,19 @@ export function PersonRow({
     }
   }
 
+  async function handleResetTOTP() {
+    setError(null);
+    setBusy(true);
+    try {
+      await resetUserTOTP(person.id);
+      onChange();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to reset 2FA.");
+      setBusy(false);
+      setConfirmAction(null);
+    }
+  }
+
   const isPending = person.status === "PENDING_VERIFICATION";
   const isActive = person.status === "ACTIVE";
   const isDisabled = person.status === "DISABLED";
@@ -117,10 +131,23 @@ export function PersonRow({
         </div>
       )}
 
-      {isActive && !isSelf && (
-        <button onClick={() => setConfirmAction("disable")} disabled={busy} className="text-sm font-semibold text-danger hover:underline disabled:opacity-60">
-          Disable
-        </button>
+      {isActive && (
+        <div className="flex items-center gap-4 text-sm font-semibold">
+          {person.totpEnabled && !isSelf && (
+            <button
+              onClick={() => setConfirmAction("reset-totp")}
+              disabled={busy}
+              className="text-ink-muted hover:text-ink disabled:opacity-60"
+            >
+              Reset 2FA
+            </button>
+          )}
+          {!isSelf && (
+            <button onClick={() => setConfirmAction("disable")} disabled={busy} className="text-danger hover:underline disabled:opacity-60">
+              Disable
+            </button>
+          )}
+        </div>
       )}
 
       {isDisabled && (
@@ -148,6 +175,17 @@ export function PersonRow({
         danger
         busy={busy}
         onConfirm={handleDisable}
+        onCancel={() => setConfirmAction(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmAction === "reset-totp"}
+        title="Reset two-factor authentication?"
+        description={`${person.name} will need to set up 2FA again from scratch on their next login - for when they've lost both their authenticator device and their recovery codes.`}
+        confirmLabel="Reset 2FA"
+        danger
+        busy={busy}
+        onConfirm={handleResetTOTP}
         onCancel={() => setConfirmAction(null)}
       />
     </li>

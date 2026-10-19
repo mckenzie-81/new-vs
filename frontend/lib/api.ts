@@ -68,13 +68,34 @@ export interface SessionUser {
   name: string;
   email: string;
   role: string;
+  usedRecoveryCode?: boolean;
 }
 
-export async function login(email: string, password: string): Promise<SessionUser> {
+export interface TOTPRequired {
+  status: "totp_required";
+  loginToken: string;
+}
+
+export type LoginResult = SessionUser | TOTPRequired;
+
+export function isTOTPRequired(result: LoginResult): result is TOTPRequired {
+  return "status" in result && result.status === "totp_required";
+}
+
+export async function login(email: string, password: string): Promise<LoginResult> {
   const response = await apiFetch("/api/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
+  });
+  return response.json();
+}
+
+export async function completeTOTPLogin(loginToken: string, code: string): Promise<SessionUser> {
+  const response = await apiFetch("/api/login/totp", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ loginToken, code }),
   });
   return response.json();
 }
@@ -85,6 +106,49 @@ export async function logout(): Promise<void> {
 
 export async function getSession(): Promise<SessionUser> {
   const response = await apiFetch("/api/session");
+  return response.json();
+}
+
+export interface TOTPStatus {
+  enabled: boolean;
+}
+
+export async function getTOTPStatus(): Promise<TOTPStatus> {
+  const response = await apiFetch("/api/auth/totp/status");
+  return response.json();
+}
+
+export interface TOTPSetup {
+  secret: string;
+  uri: string;
+  qrCodePng: string;
+}
+
+export async function beginTOTPSetup(): Promise<TOTPSetup> {
+  const response = await apiFetch("/api/auth/totp/setup", { method: "POST" });
+  return response.json();
+}
+
+export async function confirmTOTPSetup(code: string): Promise<{ recoveryCodes: string[] }> {
+  const response = await apiFetch("/api/auth/totp/confirm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+  return response.json();
+}
+
+export async function disableTOTP(password: string): Promise<{ status: string }> {
+  const response = await apiFetch("/api/auth/totp/disable", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  return response.json();
+}
+
+export async function resetUserTOTP(userId: string): Promise<{ status: string }> {
+  const response = await apiFetch(`/api/people/${userId}/reset-totp`, { method: "POST" });
   return response.json();
 }
 
@@ -122,6 +186,7 @@ export interface Person {
   role: string;
   status: string;
   createdAt: string;
+  totpEnabled: boolean;
 }
 
 export async function listPeople(): Promise<Person[]> {

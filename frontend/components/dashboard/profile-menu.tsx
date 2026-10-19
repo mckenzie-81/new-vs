@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ChevronDownIcon } from "@heroicons/react/24/outline";
 import { SessionUser, logout as apiLogout } from "@/lib/api";
 
@@ -54,6 +55,13 @@ export function ProfileMenu({ user }: { user: SessionUser }) {
             <div className="text-sm font-medium text-ink">{user.name}</div>
             <div className="text-xs text-ink-muted">{user.email}</div>
           </div>
+          <Link
+            href="/dashboard/account"
+            onClick={() => setOpen(false)}
+            className="block px-3 py-2 text-sm text-ink hover:bg-page"
+          >
+            My account
+          </Link>
           <button
             onClick={handleLogout}
             disabled={loggingOut}

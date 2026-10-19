@@ -49,6 +49,18 @@ type LoginResult struct {
 	User      User
 	RawToken  string
 	ExpiresAt time.Time
+
+	// TOTPRequired means the password checked out but this account has
+	// 2FA enabled - RawToken is empty and PendingLoginToken instead
+	// identifies the in-progress login for CompleteTOTPLogin. No session
+	// exists yet.
+	TOTPRequired      bool
+	PendingLoginToken string
+
+	// UsedRecoveryCode is set when CompleteTOTPLogin accepted a backup
+	// code instead of a live 6-digit code - worth surfacing to the
+	// handler so it can nudge the user to regenerate their codes.
+	UsedRecoveryCode bool
 }
 
 func (s *Service) Login(ctx context.Context, email, password, ip, userAgent string) (*LoginResult, error) {
@@ -66,13 +78,14 @@ func (s *Service) Login(ctx context.Context, email, password, ip, userAgent stri
 		id, name, dbEmail, role, status, passwordHash string
 		failedAttempts                                int
 		lockedUntil                                   *time.Time
+		totpEnabledAt                                 *time.Time
 	)
 	err = tx.QueryRow(ctx, `
-		SELECT id, name, email, role, status, password_hash, failed_login_attempts, locked_until
+		SELECT id, name, email, role, status, password_hash, failed_login_attempts, locked_until, totp_enabled_at
 		FROM users
 		WHERE lower(email) = lower($1)
 		FOR UPDATE
-	`, email).Scan(&id, &name, &dbEmail, &role, &status, &passwordHash, &failedAttempts, &lockedUntil)
+	`, email).Scan(&id, &name, &dbEmail, &role, &status, &passwordHash, &failedAttempts, &lockedUntil, &totpEnabledAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrInvalidCredentials
 	}
@@ -116,26 +129,38 @@ func (s *Service) Login(ctx context.Context, email, password, ip, userAgent stri
 		return nil, ErrAccountNotVerified
 	}
 
+	// The password is proven correct at this point regardless of what
+	// happens next, so the lockout counter resets here either way -
+	// whether 2FA sends this account on to a pending-code step or
+	// straight to a session.
 	if _, err := tx.Exec(ctx, `
-		UPDATE users SET failed_login_attempts = 0, locked_until = NULL, last_login_at = now()
-		WHERE id = $1
+		UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1
 	`, id); err != nil {
+		return nil, fmt.Errorf("clearing lockout state: %w", err)
+	}
+
+	if totpEnabledAt != nil {
+		pendingToken, err := s.beginPendingTOTPLogin(ctx, tx, id, ip, userAgent)
+		if err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return nil, fmt.Errorf("committing pending login: %w", err)
+		}
+		return &LoginResult{
+			User:              User{ID: id, Name: name, Email: dbEmail, Role: role},
+			TOTPRequired:      true,
+			PendingLoginToken: pendingToken,
+		}, nil
+	}
+
+	if _, err := tx.Exec(ctx, `UPDATE users SET last_login_at = now() WHERE id = $1`, id); err != nil {
 		return nil, fmt.Errorf("recording successful login: %w", err)
 	}
 
-	rawToken, tokenHash, err := generateSessionToken()
+	rawToken, expiresAt, err := s.createSession(ctx, tx, id, ip, userAgent)
 	if err != nil {
-		return nil, fmt.Errorf("generating session token: %w", err)
-	}
-
-	now := time.Now()
-	idleExpiry := now.Add(sessionIdleDuration)
-
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO sessions (user_id, token_hash, created_at, last_seen_at, expires_at, ip_address, user_agent)
-		VALUES ($1, $2, $3, $3, $4, $5, $6)
-	`, id, tokenHash, now, idleExpiry, ip, userAgent); err != nil {
-		return nil, fmt.Errorf("creating session: %w", err)
+		return nil, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -145,8 +170,31 @@ func (s *Service) Login(ctx context.Context, email, password, ip, userAgent stri
 	return &LoginResult{
 		User:      User{ID: id, Name: name, Email: dbEmail, Role: role},
 		RawToken:  rawToken,
-		ExpiresAt: now.Add(sessionAbsoluteMax),
+		ExpiresAt: expiresAt,
 	}, nil
+}
+
+// createSession is shared by Login (no 2FA) and CompleteTOTPLogin (2FA) -
+// the one place a session row actually gets inserted, so there's only
+// one definition of what "logged in" means to check for race conditions
+// or expiry-math bugs in.
+func (s *Service) createSession(ctx context.Context, tx pgx.Tx, userID, ip, userAgent string) (rawToken string, expiresAt time.Time, err error) {
+	rawToken, tokenHash, err := generateSessionToken()
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("generating session token: %w", err)
+	}
+
+	now := time.Now()
+	idleExpiry := now.Add(sessionIdleDuration)
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO sessions (user_id, token_hash, created_at, last_seen_at, expires_at, ip_address, user_agent)
+		VALUES ($1, $2, $3, $3, $4, $5, $6)
+	`, userID, tokenHash, now, idleExpiry, ip, userAgent); err != nil {
+		return "", time.Time{}, fmt.Errorf("creating session: %w", err)
+	}
+
+	return rawToken, now.Add(sessionAbsoluteMax), nil
 }
 
 // ValidateSession checks a session token and, if it's still valid, extends
