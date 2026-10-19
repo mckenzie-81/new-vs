@@ -860,6 +860,44 @@ export async function updateBranding(
   return response.json();
 }
 
+export interface SMTPSettings {
+  host: string | null;
+  port: number | null;
+  username: string | null;
+  hasPassword: boolean;
+  fromName: string | null;
+  fromEmail: string | null;
+  testMode: boolean;
+  updatedAt: string;
+}
+
+export async function getSMTPSettings(): Promise<SMTPSettings> {
+  const response = await apiFetch("/api/settings/smtp");
+  return response.json();
+}
+
+export async function updateSMTPSettings(input: {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  fromName: string;
+  fromEmail: string;
+  testMode: boolean;
+}): Promise<SMTPSettings> {
+  const response = await apiFetch("/api/settings/smtp", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return response.json();
+}
+
+export async function sendSMTPTestEmail(): Promise<{ status: string; to: string }> {
+  const response = await apiFetch("/api/settings/smtp/test", { method: "POST" });
+  return response.json();
+}
+
 // --- File uploads (candidate photos, logos) ---
 
 export type UploadKind = "candidate-photos" | "logos";

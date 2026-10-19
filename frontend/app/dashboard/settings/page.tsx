@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { getBranding, updateBranding, ApiError } from "@/lib/api";
-import { AdminHeader } from "@/components/dashboard/admin-header";
-import { Breadcrumbs } from "@/components/dashboard/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { BrandingFields } from "@/components/branding/branding-fields";
 
@@ -54,41 +52,36 @@ export default function SettingsPage() {
   }
 
   return (
-    <div>
-      <Breadcrumbs items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Settings" }]} />
-      <AdminHeader title="Settings" intro="System-wide configuration." />
+    <div className="max-w-md">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">Branding</h2>
+      <p className="mt-1 text-sm text-ink-muted">
+        The default look for the dashboard and for any election that hasn&apos;t set its own
+        branding. Leave blank to use the built-in defaults.
+      </p>
 
-      <div className="max-w-md border-t border-line pt-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-faint">Branding</h2>
-        <p className="mt-1 text-sm text-ink-muted">
-          The default look for the dashboard and for any election that hasn&apos;t set its own
-          branding. Leave blank to use the built-in defaults.
-        </p>
+      {!loaded ? (
+        <p className="py-10 text-sm text-ink-faint">Loading...</p>
+      ) : (
+        <form onSubmit={handleSave} className="mt-5 flex flex-col gap-4">
+          <BrandingFields
+            accentColor={accentColor}
+            accentColorSecondary={accentColorSecondary}
+            accentColorTertiary={accentColorTertiary}
+            logoUrl={logoUrl}
+            onAccentColorChange={setAccentColor}
+            onAccentColorSecondaryChange={setAccentColorSecondary}
+            onAccentColorTertiaryChange={setAccentColorTertiary}
+            onLogoUrlChange={setLogoUrl}
+          />
 
-        {!loaded ? (
-          <p className="py-10 text-sm text-ink-faint">Loading...</p>
-        ) : (
-          <form onSubmit={handleSave} className="mt-5 flex flex-col gap-4">
-            <BrandingFields
-              accentColor={accentColor}
-              accentColorSecondary={accentColorSecondary}
-              accentColorTertiary={accentColorTertiary}
-              logoUrl={logoUrl}
-              onAccentColorChange={setAccentColor}
-              onAccentColorSecondaryChange={setAccentColorSecondary}
-              onAccentColorTertiaryChange={setAccentColorTertiary}
-              onLogoUrlChange={setLogoUrl}
-            />
+          {error && <p className="text-sm text-danger">{error}</p>}
+          {saved && !error && <p className="text-sm text-success">Saved.</p>}
 
-            {error && <p className="text-sm text-danger">{error}</p>}
-            {saved && !error && <p className="text-sm text-success">Saved.</p>}
-
-            <Button type="submit" variant="accent" disabled={saving} className="mt-1" fullWidth={false}>
-              {saving ? "Saving..." : "Save"}
-            </Button>
-          </form>
-        )}
-      </div>
+          <Button type="submit" variant="accent" disabled={saving} className="mt-1" fullWidth={false}>
+            {saving ? "Saving..." : "Save"}
+          </Button>
+        </form>
+      )}
     </div>
   );
 }

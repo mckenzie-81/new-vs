@@ -70,17 +70,31 @@ func (s *Service) AssignAdmin(ctx context.Context, electionID, userID, assignedB
 	return &AdminAssignment{UserID: userID, Name: name, Email: email, AssignedAt: assignedAt}, nil
 }
 
-func (s *Service) UnassignAdmin(ctx context.Context, electionID, userID string) error {
+// UnassignAdmin returns the unassigned admin's name/email on success -
+// not used by the removal itself, but it's the one place that still
+// knows who this was, for a caller that wants to notify them afterward
+// without a second round-trip to look it up again.
+func (s *Service) UnassignAdmin(ctx context.Context, electionID, userID string) (*AdminAssignment, error) {
+	var name, email string
+	if err := s.pool.QueryRow(ctx, `
+		SELECT name, email FROM users WHERE id = $1
+	`, userID).Scan(&name, &email); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("looking up user: %w", err)
+	}
+
 	tag, err := s.pool.Exec(ctx, `
 		DELETE FROM election_admins WHERE election_id = $1 AND user_id = $2
 	`, electionID, userID)
 	if err != nil {
-		return fmt.Errorf("unassigning admin: %w", err)
+		return nil, fmt.Errorf("unassigning admin: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return ErrNotAssigned
+		return nil, ErrNotAssigned
 	}
-	return nil
+	return &AdminAssignment{UserID: userID, Name: name, Email: email}, nil
 }
 
 func (s *Service) ListAssignedAdmins(ctx context.Context, electionID string) ([]AdminAssignment, error) {

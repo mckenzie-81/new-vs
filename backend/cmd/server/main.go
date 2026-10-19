@@ -17,6 +17,7 @@ import (
 	"backend/internal/electorate"
 	"backend/internal/httpx"
 	"backend/internal/pulse"
+	"backend/internal/smtp"
 	"backend/internal/storage"
 	"backend/internal/voter"
 
@@ -76,7 +77,7 @@ func main() {
 	electorateHandler := electorate.NewHandler(electorateService, authService, pool)
 
 	electionService := election.NewService(pool, electorateService)
-	electionHandler := election.NewHandler(electionService, authService, pool)
+	electionHandler := election.NewHandler(electionService, authService, pool, cfg.AppBaseURL)
 
 	voterService := voter.NewService(pool, electionService, electorateService)
 	voterHandler := voter.NewHandler(voterService, electionService, authService, pool, cfg.AppBaseURL, cfg.CookieSecure)
@@ -86,6 +87,12 @@ func main() {
 
 	brandingService := branding.NewService(pool)
 	brandingHandler := branding.NewHandler(brandingService, authService)
+
+	smtpService := smtp.NewService(pool, cfg.SMTPCredentialKey)
+	smtpHandler := smtp.NewHandler(smtpService, authService, pool)
+	if cfg.SMTPCredentialKey == "" {
+		log.Printf("email sending unavailable: SMTP_CREDENTIAL_KEY isn't set (needed before an SMTP password can be saved)")
+	}
 
 	storageService := storage.NewService(cfg)
 	storageHandler := storage.NewHandler(storageService, authService)
@@ -106,6 +113,7 @@ func main() {
 	brandingHandler.Register(mux)
 	storageHandler.Register(mux)
 	auditLogHandler.Register(mux)
+	smtpHandler.Register(mux)
 
 	handler := httpx.CORS(cfg.AppBaseURL, mux)
 

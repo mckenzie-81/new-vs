@@ -27,6 +27,14 @@ type Config struct {
 	// appended to on a timer, outside Postgres entirely - see
 	// internal/audit's package doc for why that matters.
 	AuditCheckpointPath string
+
+	// SMTPCredentialKey is a base64-encoded 32-byte AES-256 key used to
+	// encrypt an institution's SMTP password at rest - optional, since
+	// not every deployment has email set up yet; saving a password with
+	// none configured is rejected with a clear error at that point,
+	// rather than failing the whole server over an unrelated, unused
+	// feature.
+	SMTPCredentialKey string
 }
 
 func Load() (*Config, error) {
@@ -42,6 +50,8 @@ func Load() (*Config, error) {
 		R2PublicBaseURL: strings.TrimRight(os.Getenv("R2_PUBLIC_BASE_URL"), "/"),
 
 		AuditCheckpointPath: os.Getenv("AUDIT_CHECKPOINT_PATH"),
+
+		SMTPCredentialKey: os.Getenv("SMTP_CREDENTIAL_KEY"),
 	}
 
 	if cfg.DatabaseURL == "" {

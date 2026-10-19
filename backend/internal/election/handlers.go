@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -19,10 +20,11 @@ type Handler struct {
 	service     *Service
 	authService *auth.Service
 	pool        *pgxpool.Pool
+	appBaseURL  string
 }
 
-func NewHandler(service *Service, authService *auth.Service, pool *pgxpool.Pool) *Handler {
-	return &Handler{service: service, authService: authService, pool: pool}
+func NewHandler(service *Service, authService *auth.Service, pool *pgxpool.Pool, appBaseURL string) *Handler {
+	return &Handler{service: service, authService: authService, pool: pool, appBaseURL: appBaseURL}
 }
 
 var dashboardRoles = []string{"SYSTEMADMIN", "ADMIN", "APPROVER"}
@@ -701,6 +703,9 @@ func (h *Handler) assignAdmin(w http.ResponseWriter, r *http.Request) {
 			IPAddress: httpx.ClientIP(r),
 			UserAgent: r.Header.Get("User-Agent"),
 		})
+		if election, err := h.service.Get(r.Context(), electionID); err == nil {
+			sendAdminAssignmentEmailStub(h.appBaseURL, result.Email, election.Title, electionID, true)
+		}
 		httpx.JSON(w, http.StatusCreated, result)
 
 	case errors.Is(err, ErrNotFound):
@@ -734,7 +739,7 @@ func (h *Handler) unassignAdmin(w http.ResponseWriter, r *http.Request) {
 
 	electionID := r.PathValue("electionId")
 	userID := r.PathValue("userId")
-	err = h.service.UnassignAdmin(r.Context(), electionID, userID)
+	unassigned, err := h.service.UnassignAdmin(r.Context(), electionID, userID)
 
 	switch {
 	case err == nil:
@@ -748,10 +753,16 @@ func (h *Handler) unassignAdmin(w http.ResponseWriter, r *http.Request) {
 			IPAddress: httpx.ClientIP(r),
 			UserAgent: r.Header.Get("User-Agent"),
 		})
+		if election, err := h.service.Get(r.Context(), electionID); err == nil {
+			sendAdminAssignmentEmailStub(h.appBaseURL, unassigned.Email, election.Title, electionID, false)
+		}
 		httpx.JSON(w, http.StatusOK, map[string]string{"status": "unassigned"})
 
 	case errors.Is(err, ErrNotAssigned):
 		httpx.Error(w, http.StatusNotFound, err.Error())
+
+	case errors.Is(err, ErrUserNotFound):
+		httpx.Error(w, http.StatusNotFound, "no such user")
 
 	default:
 		log.Printf("unassigning admin failed: %v", err)
@@ -778,6 +789,9 @@ func (h *Handler) submitForApproval(w http.ResponseWriter, r *http.Request) {
 			IPAddress:   httpx.ClientIP(r),
 			UserAgent:   r.Header.Get("User-Agent"),
 		})
+		if emails, err := h.listActiveApproverEmails(r.Context()); err == nil {
+			sendSubmittedForApprovalEmailStub(h.appBaseURL, emails, result.Title, electionID)
+		}
 		httpx.JSON(w, http.StatusOK, result)
 
 	case errors.Is(err, ErrNotFound):
@@ -819,6 +833,9 @@ func (h *Handler) approveElection(w http.ResponseWriter, r *http.Request) {
 			IPAddress:   httpx.ClientIP(r),
 			UserAgent:   r.Header.Get("User-Agent"),
 		})
+		if _, email, err := h.lookupContact(r.Context(), result.CreatedBy); err == nil {
+			sendDecisionEmailStub(h.appBaseURL, email, result.Title, electionID, "approved", "")
+		}
 		httpx.JSON(w, http.StatusOK, result)
 
 	case errors.Is(err, ErrNotFound):
@@ -873,6 +890,9 @@ func (h *Handler) rejectElection(w http.ResponseWriter, r *http.Request) {
 			IPAddress: httpx.ClientIP(r),
 			UserAgent: r.Header.Get("User-Agent"),
 		})
+		if _, email, err := h.lookupContact(r.Context(), result.CreatedBy); err == nil {
+			sendDecisionEmailStub(h.appBaseURL, email, result.Title, electionID, "rejected", req.Reason)
+		}
 		httpx.JSON(w, http.StatusOK, result)
 
 	case errors.Is(err, ErrNotFound):
@@ -1041,4 +1061,73 @@ func (h *Handler) logAudit(ctx context.Context, entry audit.Entry) {
 	if err := audit.LogStandalone(ctx, h.pool, entry); err != nil {
 		log.Printf("failed to write audit log for action %q: %v", entry.Action, err)
 	}
+}
+
+// lookupContact is the one-off user lookup the notification stubs below
+// need (a submitter or admin's name/email), best-effort - a failure here
+// should never fail the request that triggered it, only skip the
+// notification, so every call site just ignores the error and moves on.
+func (h *Handler) lookupContact(ctx context.Context, userID string) (name, email string, err error) {
+	err = h.pool.QueryRow(ctx, `SELECT name, email FROM users WHERE id = $1`, userID).Scan(&name, &email)
+	return name, email, err
+}
+
+// listActiveApproverEmails is who gets notified when an election is
+// submitted - there's no per-election approver assignment (see Approve's
+// doc comment), so every active approver is a candidate reviewer and
+// every active approver hears about it.
+func (h *Handler) listActiveApproverEmails(ctx context.Context) ([]string, error) {
+	rows, err := h.pool.Query(ctx, `
+		SELECT email FROM users WHERE role = 'APPROVER' AND status = 'ACTIVE'
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("listing active approvers: %w", err)
+	}
+	defer rows.Close()
+
+	emails := []string{}
+	for rows.Next() {
+		var email string
+		if err := rows.Scan(&email); err != nil {
+			return nil, fmt.Errorf("scanning approver email: %w", err)
+		}
+		emails = append(emails, email)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating approvers: %w", err)
+	}
+	return emails, nil
+}
+
+// The four notification stubs below stand in for real transactional
+// email, same as the bootstrap/password-reset stubs elsewhere - they
+// just log what would be sent. No real sending is wired up yet (an
+// institution's own SMTP, configured per-deployment, is the planned
+// design - deliberately not built yet), so for now this is purely a
+// record of when and to whom a notification would have gone out.
+func sendSubmittedForApprovalEmailStub(appBaseURL string, approverEmails []string, title, electionID string) {
+	if len(approverEmails) == 0 {
+		log.Printf("[EMAIL STUB] %q submitted for approval, but there are no active approvers to notify", title)
+		return
+	}
+	link := appBaseURL + "/dashboard/elections/" + electionID
+	log.Printf("[EMAIL STUB] %q submitted for approval - notifying approver(s) %v: %s", title, approverEmails, link)
+}
+
+func sendDecisionEmailStub(appBaseURL, submitterEmail, title, electionID, decision, reason string) {
+	link := appBaseURL + "/dashboard/elections/" + electionID
+	if reason != "" {
+		log.Printf("[EMAIL STUB] %q was %s (reason: %q) - notifying submitter %s: %s", title, decision, reason, submitterEmail, link)
+		return
+	}
+	log.Printf("[EMAIL STUB] %q was %s - notifying submitter %s: %s", title, decision, submitterEmail, link)
+}
+
+func sendAdminAssignmentEmailStub(appBaseURL, adminEmail, title, electionID string, assigned bool) {
+	link := appBaseURL + "/dashboard/elections/" + electionID
+	verb := "assigned to"
+	if !assigned {
+		verb = "unassigned from"
+	}
+	log.Printf("[EMAIL STUB] %s %s %q - notifying %s: %s", adminEmail, verb, title, adminEmail, link)
 }
