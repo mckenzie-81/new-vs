@@ -839,6 +839,24 @@ export async function getAuditCheckpoints(): Promise<AuditCheckpoint[]> {
   return body.checkpoints;
 }
 
+export interface IntegrityAlert {
+  id: string;
+  kind: string;
+  detail: string;
+  createdAt: string;
+}
+
+export async function getIntegrityAlert(): Promise<IntegrityAlert | null> {
+  const response = await apiFetch("/api/audit-log/alert");
+  const body = await response.json();
+  return body.alert;
+}
+
+export async function acknowledgeIntegrityAlert(id: string): Promise<{ status: string }> {
+  const response = await apiFetch(`/api/audit-log/alerts/${id}/acknowledge`, { method: "POST" });
+  return response.json();
+}
+
 export interface DeviceSignal {
   deviceId: string;
   distinctVoters: number;

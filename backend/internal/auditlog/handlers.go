@@ -5,6 +5,8 @@
 package auditlog
 
 import (
+	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -30,6 +32,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/audit-log", h.list)
 	mux.HandleFunc("GET /api/audit-log/verify", h.verify)
 	mux.HandleFunc("GET /api/audit-log/checkpoints", h.checkpoints)
+	mux.HandleFunc("GET /api/audit-log/alert", h.getAlert)
+	mux.HandleFunc("POST /api/audit-log/alerts/{id}/acknowledge", h.acknowledgeAlert)
 }
 
 const defaultLimit = 50
@@ -173,4 +177,52 @@ func (h *Handler) checkpoints(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httpx.JSON(w, http.StatusOK, map[string]any{"checkpoints": checkpoints})
+}
+
+// getAlert is the cheap read a dashboard-wide banner polls on every page
+// load - a single indexed lookup, not a re-verify. It's how "automatic"
+// verification actually surfaces to a human instead of only ever living
+// in server logs nobody's watching.
+func (h *Handler) getAlert(w http.ResponseWriter, r *http.Request) {
+	if _, err := h.authService.Authorize(w, r, "SYSTEMADMIN"); err != nil {
+		httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	alert, err := audit.LatestUnacknowledgedAlert(r.Context(), h.pool)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "failed to check for integrity alerts")
+		return
+	}
+
+	httpx.JSON(w, http.StatusOK, map[string]any{"alert": alert})
+}
+
+func (h *Handler) acknowledgeAlert(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.authService.Authorize(w, r, "SYSTEMADMIN")
+	if err != nil {
+		httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	err = audit.AcknowledgeAlert(r.Context(), h.pool, r.PathValue("id"), actor.ID)
+	switch {
+	case err == nil:
+		if err := audit.LogStandalone(r.Context(), h.pool, audit.Entry{
+			ActorUserID: &actor.ID,
+			Action:      "AUDIT_INTEGRITY_ALERT_ACKNOWLEDGED",
+			Metadata:    map[string]any{"alert_id": r.PathValue("id")},
+			IPAddress:   httpx.ClientIP(r),
+			UserAgent:   r.Header.Get("User-Agent"),
+		}); err != nil {
+			log.Printf("failed to write audit log for alert acknowledgement: %v", err)
+		}
+		httpx.JSON(w, http.StatusOK, map[string]string{"status": "acknowledged"})
+
+	case errors.Is(err, audit.ErrAlertNotFound):
+		httpx.Error(w, http.StatusNotFound, err.Error())
+
+	default:
+		httpx.Error(w, http.StatusInternalServerError, "failed to acknowledge alert")
+	}
 }

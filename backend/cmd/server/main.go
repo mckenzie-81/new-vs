@@ -23,28 +23,27 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const auditCheckpointInterval = 5 * time.Minute
+const auditIntegrityCheckInterval = 5 * time.Minute
 
-// runAuditCheckpoints anchors the audit chain's head outside Postgres on
-// a timer - see internal/audit's package doc for why VerifyChain alone,
-// with no anchor, can't catch a sufficiently thorough database rewrite.
-// Runs for the life of the process; errors are logged, never fatal - a
-// missed checkpoint just means a slightly longer gap an attacker's
+// runAuditIntegrityChecks is what makes verification and the external
+// anchor actually automatic, instead of only ever running when an admin
+// remembers to click a button: every few minutes it re-verifies the
+// chain, cross-checks it against every checkpoint taken so far, records
+// an alert the moment either disagrees (surfaced on every dashboard page
+// via audit.LatestUnacknowledgedAlert), and only then takes this run's
+// own checkpoint. Runs for the life of the process; errors are logged,
+// never fatal - a missed check just means a slightly longer gap a
 // rewrite could hide inside, not a reason to take the server down.
-func runAuditCheckpoints(ctx context.Context, pool *pgxpool.Pool, path string) {
-	if cp, err := audit.WriteCheckpoint(ctx, pool, path); err != nil {
-		log.Printf("audit checkpoint failed: %v", err)
-	} else if cp != nil {
-		log.Printf("audit checkpoint: seq=%d", cp.Seq)
+func runAuditIntegrityChecks(ctx context.Context, pool *pgxpool.Pool, path string) {
+	if err := audit.RunIntegrityCheck(ctx, pool, path); err != nil {
+		log.Printf("audit integrity check failed: %v", err)
 	}
 
-	ticker := time.NewTicker(auditCheckpointInterval)
+	ticker := time.NewTicker(auditIntegrityCheckInterval)
 	defer ticker.Stop()
 	for range ticker.C {
-		if cp, err := audit.WriteCheckpoint(ctx, pool, path); err != nil {
-			log.Printf("audit checkpoint failed: %v", err)
-		} else if cp != nil {
-			log.Printf("audit checkpoint: seq=%d", cp.Seq)
+		if err := audit.RunIntegrityCheck(ctx, pool, path); err != nil {
+			log.Printf("audit integrity check failed: %v", err)
 		}
 	}
 }
@@ -95,7 +94,7 @@ func main() {
 	}
 
 	auditLogHandler := auditlog.NewHandler(pool, authService, cfg.AuditCheckpointPath)
-	go runAuditCheckpoints(ctx, pool, cfg.AuditCheckpointPath)
+	go runAuditIntegrityChecks(ctx, pool, cfg.AuditCheckpointPath)
 
 	mux := http.NewServeMux()
 	bootstrapHandler.Register(mux)

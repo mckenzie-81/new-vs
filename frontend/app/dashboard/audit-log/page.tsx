@@ -60,6 +60,7 @@ const actionLabel: Record<string, string> = {
   VOTER_DEVICE_BLOCKED: "Voter blocked from a second device",
   VOTER_CREDENTIAL_UNLOCKED: "Voter credential unlocked",
   VOTE_CAST: "Vote cast",
+  AUDIT_INTEGRITY_ALERT_ACKNOWLEDGED: "Audit integrity alert acknowledged",
 };
 
 function describe(entry: AuditLogEntry) {

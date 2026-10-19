@@ -1,0 +1,2 @@
+DROP INDEX idx_audit_integrity_alerts_unacknowledged;
+DROP TABLE audit_integrity_alerts;

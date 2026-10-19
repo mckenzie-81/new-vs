@@ -7,6 +7,7 @@ import { Sidebar, MobileSidebar } from "@/components/dashboard/sidebar";
 import { Header } from "@/components/dashboard/header";
 import { DashboardUserProvider } from "@/components/dashboard/user-context";
 import { ThemeScope } from "@/components/branding/theme-scope";
+import { IntegrityAlertBanner } from "@/components/dashboard/integrity-alert-banner";
 
 export function DashboardLayoutClient({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -51,6 +52,7 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
 
           <div className="flex min-h-screen min-w-0 flex-1 flex-col">
             <Header user={user} onMenuClick={() => setMobileNavOpen(true)} />
+            {user.role === "SYSTEMADMIN" && <IntegrityAlertBanner />}
             <main className="min-w-0 flex-1 p-6">{children}</main>
           </div>
         </div>
