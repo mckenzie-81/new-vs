@@ -8,6 +8,7 @@ import {
   updateElection,
   electionToCreateInput,
   getDeviceSignals,
+  unlockVoterCredential,
   ApiError,
   ElectorateSummary,
   IssueVoterCredentialsResult,
@@ -18,6 +19,8 @@ import { useElection } from "@/components/dashboard/election-context";
 import { AdminHeader } from "@/components/dashboard/admin-header";
 import { Button, SecondaryButton } from "@/components/ui/button";
 import { ElectorateSelector } from "@/components/dashboard/electorate-selector";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 
 export default function ElectionElectoratePage() {
   const user = useDashboardUser();
@@ -28,6 +31,10 @@ export default function ElectionElectoratePage() {
   const [issueError, setIssueError] = useState<string | null>(null);
   const [issueResult, setIssueResult] = useState<IssueVoterCredentialsResult | null>(null);
   const [deviceSignals, setDeviceSignals] = useState<DeviceSignal[] | null>(null);
+  const [unlockEmail, setUnlockEmail] = useState("");
+  const [unlocking, setUnlocking] = useState(false);
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+  const [unlockSuccess, setUnlockSuccess] = useState<string | null>(null);
 
   const [editing, setEditing] = useState(false);
   const [electorateDatabaseId, setElectorateDatabaseId] = useState(
@@ -68,6 +75,24 @@ export default function ElectionElectoratePage() {
       setIssueError(err instanceof ApiError ? err.message : "Failed to issue voter credentials.");
     } finally {
       setIssuing(false);
+    }
+  }
+
+  async function handleUnlock(e: React.FormEvent) {
+    e.preventDefault();
+    setUnlocking(true);
+    setUnlockError(null);
+    setUnlockSuccess(null);
+    try {
+      await unlockVoterCredential(election.id, unlockEmail);
+      setUnlockSuccess(
+        `${unlockEmail} can now verify again, including from a new device, if they haven't already voted.`
+      );
+      setUnlockEmail("");
+    } catch (err) {
+      setUnlockError(err instanceof ApiError ? err.message : "Failed to unlock this voter.");
+    } finally {
+      setUnlocking(false);
     }
   }
 
@@ -265,6 +290,38 @@ export default function ElectionElectoratePage() {
             </div>
           )}
 
+          {canIssue && (
+            <div className="mt-8 border-t border-line pt-6">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                Unlock a voter
+              </p>
+              <p className="mt-1 text-sm text-ink-muted">
+                A voting link can only be completed on the first device that successfully
+                verifies it - a second device is turned away so the same link can&apos;t be
+                opened twice. Use this if a voter got stuck (switched devices, cleared cookies,
+                failed verification too many times) and hasn&apos;t voted yet.
+              </p>
+              <form onSubmit={handleUnlock} className="mt-3 flex items-end gap-3">
+                <div className="flex-1">
+                  <Field label="Voter's email" htmlFor="unlock-email">
+                    <Input
+                      id="unlock-email"
+                      type="email"
+                      required
+                      value={unlockEmail}
+                      onChange={(e) => setUnlockEmail(e.target.value)}
+                    />
+                  </Field>
+                </div>
+                <Button type="submit" fullWidth={false} disabled={unlocking}>
+                  {unlocking ? "Unlocking..." : "Unlock"}
+                </Button>
+              </form>
+              {unlockError && <p className="mt-3 text-sm text-danger">{unlockError}</p>}
+              {unlockSuccess && <p className="mt-3 text-sm text-success">{unlockSuccess}</p>}
+            </div>
+          )}
+
           {showDeviceSignals && deviceSignals && deviceSignals.length > 0 && (
             <div className="mt-8 border-t border-line pt-6">
               <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
@@ -273,7 +330,7 @@ export default function ElectionElectoratePage() {
               <p className="mt-1 text-sm text-ink-muted">
                 Browsers that have authenticated as more than one voter. This is informational,
                 not proof of anything on its own - a shared lab or polling-station computer will
-                show up here too. Nothing above is ever blocked.
+                show up here too.
               </p>
               <ul className="mt-3 divide-y divide-line border-t border-line">
                 {deviceSignals.map((d) => (

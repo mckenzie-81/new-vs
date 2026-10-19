@@ -42,6 +42,7 @@ func NewHandler(service *Service, electionService *election.Service, authService
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/elections/{electionId}/voter-credentials/issue", h.issueCredentials)
+	mux.HandleFunc("POST /api/elections/{electionId}/voter-credentials/unlock", h.unlockCredential)
 	mux.HandleFunc("GET /api/elections/{id}/results", h.getResults)
 	mux.HandleFunc("GET /api/elections/{id}/device-signals", h.getDeviceSignals)
 	mux.HandleFunc("GET /api/vote/{token}", h.getTokenStatus)
@@ -107,6 +108,53 @@ func (h *Handler) issueCredentials(w http.ResponseWriter, r *http.Request) {
 	default:
 		log.Printf("issuing voter credentials failed: %v", err)
 		httpx.Error(w, http.StatusInternalServerError, "failed to issue voter credentials")
+	}
+}
+
+type unlockCredentialRequest struct {
+	Email string `json:"email"`
+}
+
+// unlockCredential is the admin-facing escape hatch for a voter who's
+// stuck - either locked out after too many failed verification attempts,
+// or blocked from a second device by the binding above - with nowhere
+// else to turn. It never touches a credential that's already VOTED.
+func (h *Handler) unlockCredential(w http.ResponseWriter, r *http.Request) {
+	electionID := r.PathValue("electionId")
+	actor, err := election.AuthorizeBallotEditor(h.authService, h.electionService, w, r, electionID)
+	if err != nil {
+		election.WriteBallotAuthError(w, err)
+		return
+	}
+
+	var req unlockCredentialRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Email == "" {
+		httpx.Error(w, http.StatusBadRequest, "email is required")
+		return
+	}
+
+	err = h.service.UnlockCredential(r.Context(), electionID, req.Email)
+	switch {
+	case err == nil:
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &actor.ID,
+			Action:      "VOTER_CREDENTIAL_UNLOCKED",
+			Metadata:    map[string]any{"election_id": electionID, "email": req.Email},
+			IPAddress:   httpx.ClientIP(r),
+			UserAgent:   r.Header.Get("User-Agent"),
+		})
+		httpx.JSON(w, http.StatusOK, map[string]string{"status": "unlocked"})
+
+	case errors.Is(err, ErrCannotUnlock):
+		httpx.Error(w, http.StatusNotFound, err.Error())
+
+	default:
+		log.Printf("unlocking voter credential failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to unlock voter credential")
 	}
 }
 
@@ -194,6 +242,14 @@ func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request) {
 
 	case errors.Is(err, ErrAlreadyVoted):
 		httpx.Error(w, http.StatusConflict, err.Error())
+
+	case errors.Is(err, ErrDeviceMismatch):
+		// 403, not 409 - the frontend's authenticate handler already maps
+		// 409 straight to the "already voted" screen with no message
+		// shown, which would misreport this as the wrong problem. 403
+		// falls through to its generic error path instead, which surfaces
+		// this error's actual text on the verification form.
+		httpx.Error(w, http.StatusForbidden, err.Error())
 
 	default:
 		log.Printf("authenticating voter failed: %v", err)

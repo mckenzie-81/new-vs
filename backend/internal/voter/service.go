@@ -43,6 +43,8 @@ var (
 	ErrCredentialLocked      = errors.New("too many failed attempts - this link has been locked")
 	ErrVerificationFailed    = errors.New("the details provided don't match our records")
 	ErrAlreadyVoted          = errors.New("you have already voted in this election")
+	ErrDeviceMismatch        = errors.New("this voting link has already been opened on a different device - contact your election administrator if this wasn't you")
+	ErrCannotUnlock          = errors.New("no matching voter credential found, or they've already voted")
 	ErrElectionNotLive       = errors.New("voting is not currently open for this election")
 	ErrSessionInvalid        = errors.New("your session has expired - use your voting link again")
 	ErrInvalidSelection      = errors.New("invalid ballot selection")
@@ -239,8 +241,14 @@ func (s *Service) GetTokenStatus(ctx context.Context, rawToken string) (*TokenSt
 // threshold even though the overall call fails; success flips the
 // credential to AUTHENTICATED, which is what GetBallot/CastVote check for.
 //
-// deviceID is recorded on every attempt, successful or not - it's purely
-// observational (see DeviceSignals) and never changes the outcome here.
+// The first device to successfully verify claims this credential: once
+// device_id is set, a later successful verification from a *different*
+// device is rejected with ErrDeviceMismatch instead of being allowed
+// through - the same link can't be completed on a second device. A
+// mismatch doesn't count as a failed attempt (their details were right;
+// the device is the whole reason for the rejection), so it can't be used
+// to lock someone else out via the failed-attempts counter. An admin can
+// clear a stuck binding via UnlockCredential.
 func (s *Service) AuthenticateVoter(ctx context.Context, rawToken string, verification map[string]string, ip, userAgent, deviceID string) (time.Time, error) {
 	if rawToken == "" {
 		return time.Time{}, ErrInvalidOrExpiredToken
@@ -257,11 +265,12 @@ func (s *Service) AuthenticateVoter(ctx context.Context, rawToken string, verifi
 		credentialID, electionID, electorateVoterID, email, status string
 		failedAttempts                                             int
 		expiresAt                                                  time.Time
+		boundDeviceID                                              *string
 	)
 	err = tx.QueryRow(ctx, `
-		SELECT id, election_id, electorate_voter_id, email, status, failed_attempts, expires_at
+		SELECT id, election_id, electorate_voter_id, email, status, failed_attempts, expires_at, device_id
 		FROM voter_credentials WHERE token_hash = $1 FOR UPDATE
-	`, tokenHash).Scan(&credentialID, &electionID, &electorateVoterID, &email, &status, &failedAttempts, &expiresAt)
+	`, tokenHash).Scan(&credentialID, &electionID, &electorateVoterID, &email, &status, &failedAttempts, &expiresAt, &boundDeviceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return time.Time{}, ErrInvalidOrExpiredToken
 	}
@@ -329,9 +338,13 @@ func (s *Service) AuthenticateVoter(ctx context.Context, rawToken string, verifi
 			newStatus = "LOCKED"
 			action = "VOTER_CREDENTIAL_LOCKED"
 		}
+		// device_id is deliberately not written here - binding on a failed
+		// attempt would let someone claim the device slot with one
+		// deliberately wrong guess before the real voter ever opens the
+		// link, locking them out of their own device permanently.
 		if _, err := tx.Exec(ctx, `
-			UPDATE voter_credentials SET failed_attempts = $1, status = $2, device_id = $3, updated_at = now() WHERE id = $4
-		`, failedAttempts, newStatus, deviceID, credentialID); err != nil {
+			UPDATE voter_credentials SET failed_attempts = $1, status = $2, updated_at = now() WHERE id = $3
+		`, failedAttempts, newStatus, credentialID); err != nil {
 			return time.Time{}, fmt.Errorf("recording failed attempt: %w", err)
 		}
 		if err := audit.Log(ctx, tx, audit.Entry{
@@ -349,6 +362,21 @@ func (s *Service) AuthenticateVoter(ctx context.Context, rawToken string, verifi
 			return time.Time{}, ErrCredentialLocked
 		}
 		return time.Time{}, ErrVerificationFailed
+	}
+
+	if boundDeviceID != nil && *boundDeviceID != deviceID {
+		if err := audit.Log(ctx, tx, audit.Entry{
+			Action:    "VOTER_DEVICE_BLOCKED",
+			Metadata:  map[string]any{"election_id": electionID, "electorate_voter_id": electorateVoterID, "email": email, "device_id": deviceID},
+			IPAddress: ip,
+			UserAgent: userAgent,
+		}); err != nil {
+			return time.Time{}, fmt.Errorf("writing audit log: %w", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return time.Time{}, fmt.Errorf("committing device block: %w", err)
+		}
+		return time.Time{}, ErrDeviceMismatch
 	}
 
 	if _, err := tx.Exec(ctx, `
@@ -418,6 +446,30 @@ func (s *Service) DeviceSignals(ctx context.Context, electionID string) ([]Devic
 	}
 
 	return signals, nil
+}
+
+// UnlockCredential clears a stuck credential for a voter with nowhere
+// else to turn: it resets the failed-verification counter, lifts a
+// LOCKED status back to ISSUED, and clears any device binding so the
+// next device to verify successfully can claim it fresh. A voter who has
+// already voted is untouched - there's nothing to unlock, and this must
+// never become a way to let someone vote again.
+func (s *Service) UnlockCredential(ctx context.Context, electionID, email string) error {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE voter_credentials
+		SET failed_attempts = 0,
+		    device_id = NULL,
+		    status = CASE WHEN status = 'LOCKED' THEN 'ISSUED' ELSE status END,
+		    updated_at = now()
+		WHERE election_id = $1 AND lower(email) = lower($2) AND status != 'VOTED'
+	`, electionID, email)
+	if err != nil {
+		return fmt.Errorf("unlocking credential: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrCannotUnlock
+	}
+	return nil
 }
 
 type BallotResult struct {

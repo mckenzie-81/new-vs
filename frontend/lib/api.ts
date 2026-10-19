@@ -835,6 +835,18 @@ export async function getDeviceSignals(electionId: string): Promise<DeviceSignal
   return body.devices;
 }
 
+export async function unlockVoterCredential(
+  electionId: string,
+  email: string
+): Promise<{ status: string }> {
+  const response = await apiFetch(`/api/elections/${electionId}/voter-credentials/unlock`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  return response.json();
+}
+
 // uploadFile gets a presigned URL from our backend, then PUTs the file
 // straight to R2 with a plain fetch (no credentials, no API base URL -
 // it's a different origin entirely) so the file itself never passes
