@@ -36,6 +36,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/electorate-databases/{id}/upload", h.upload)
 	mux.HandleFunc("GET /api/electorate-databases/{id}/voters", h.listVoters)
 	mux.HandleFunc("GET /api/electorate-databases/{id}/distinct", h.distinctValues)
+	mux.HandleFunc("GET /api/electorate-databases/{id}/duplicates", h.duplicates)
+	mux.HandleFunc("POST /api/electorate-databases/{id}/voters/remove", h.removeVoters)
 }
 
 // Electorate data is PII for everyone eligible to vote, not just the
@@ -243,6 +245,62 @@ func (h *Handler) listVoters(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httpx.JSON(w, http.StatusOK, voters)
+}
+
+func (h *Handler) duplicates(w http.ResponseWriter, r *http.Request) {
+	if _, err := h.authorize(w, r); err != nil {
+		return
+	}
+
+	pairs, err := h.service.ExactDuplicates(r.Context(), r.PathValue("id"))
+	switch {
+	case err == nil:
+		httpx.JSON(w, http.StatusOK, map[string]any{"pairs": pairs})
+	case errors.Is(err, ErrNotFound):
+		httpx.Error(w, http.StatusNotFound, "no such electorate database")
+	default:
+		log.Printf("checking for duplicate voters failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to check for duplicates")
+	}
+}
+
+type removeVotersRequest struct {
+	VoterIDs []string `json:"voterIds"`
+}
+
+func (h *Handler) removeVoters(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.authorize(w, r)
+	if err != nil {
+		return
+	}
+
+	var req removeVotersRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	id := r.PathValue("id")
+	removed, err := h.service.RemoveVoters(r.Context(), id, req.VoterIDs)
+
+	switch {
+	case err == nil:
+		h.logAudit(r.Context(), audit.Entry{
+			ActorUserID: &actor.ID,
+			Action:      "ELECTORATE_VOTERS_REMOVED",
+			Metadata:    map[string]any{"database_id": id, "removed": removed},
+			IPAddress:   httpx.ClientIP(r),
+			UserAgent:   r.Header.Get("User-Agent"),
+		})
+		httpx.JSON(w, http.StatusOK, map[string]any{"removed": removed})
+
+	case errors.Is(err, ErrVotersLocked):
+		httpx.Error(w, http.StatusConflict, err.Error())
+
+	default:
+		log.Printf("removing voters failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to remove voters")
+	}
 }
 
 func (h *Handler) distinctValues(w http.ResponseWriter, r *http.Request) {

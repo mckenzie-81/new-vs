@@ -637,6 +637,31 @@ export async function getDistinctValues(id: string, column: string): Promise<str
   return response.json();
 }
 
+export interface DuplicatePair {
+  voterAId: string;
+  voterAName: string;
+  voterAEmail: string;
+  voterBId: string;
+  voterBName: string;
+  voterBEmail: string;
+  matchedOn: "name" | "email";
+}
+
+export async function getDuplicateVoters(id: string): Promise<DuplicatePair[]> {
+  const response = await apiFetch(`/api/electorate-databases/${id}/duplicates`);
+  const body = await response.json();
+  return body.pairs;
+}
+
+export async function removeVoters(id: string, voterIds: string[]): Promise<{ removed: number }> {
+  const response = await apiFetch(`/api/electorate-databases/${id}/voters/remove`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ voterIds }),
+  });
+  return response.json();
+}
+
 export async function getElectionElectorate(electionId: string): Promise<ElectorateSummary> {
   const response = await apiFetch(`/api/elections/${electionId}/electorate`);
   return response.json();

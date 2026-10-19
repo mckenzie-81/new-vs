@@ -25,6 +25,7 @@ var (
 	ErrMissingColumns          = errors.New("the file must include a name column and an email column")
 	ErrSensitiveColumnMismatch = errors.New("this file's sensitive columns don't match the database's existing sensitive columns")
 	ErrSensitiveColumn         = errors.New("this column holds hashed values and can't be read back")
+	ErrVotersLocked            = errors.New("this database is linked to an election that's past draft, so its voters can't be edited anymore")
 )
 
 type Service struct {
@@ -446,6 +447,157 @@ func (s *Service) ListVoters(ctx context.Context, databaseID string, filter map[
 	}
 
 	return voters, nil
+}
+
+// DuplicatePair is one potential duplicate flagged by ExactDuplicates -
+// never an automatic determination, just enough for an admin to look at
+// both rows and decide for themselves.
+type DuplicatePair struct {
+	VoterAID    string `json:"voterAId"`
+	VoterAName  string `json:"voterAName"`
+	VoterAEmail string `json:"voterAEmail"`
+	VoterBID    string `json:"voterBId"`
+	VoterBName  string `json:"voterBName"`
+	VoterBEmail string `json:"voterBEmail"`
+	// MatchedOn is "name" or "email" - whichever field matched exactly.
+	MatchedOn string `json:"matchedOn"`
+}
+
+// ExactDuplicates flags voters within one database whose full name or
+// email matches another voter's exactly (case-insensitively, whitespace
+// trimmed) - nothing fuzzy. An earlier version flagged names within a
+// small edit distance too, but real institutional data showed that's
+// far too noisy to trust: "Belinda Dee Gyamfi" and "Belinda Dee Gyasi"
+// are two different people at two different institutions, one letter
+// apart. An exact match is a much rarer and stronger signal - still
+// just a heuristic for an admin to judge (two real people can share a
+// full name), never an automatic determination, but one worth a human
+// glance when it happens.
+func (s *Service) ExactDuplicates(ctx context.Context, databaseID string) ([]DuplicatePair, error) {
+	var columns []string
+	if err := s.pool.QueryRow(ctx, `
+		SELECT columns FROM electorate_databases WHERE id = $1
+	`, databaseID).Scan(&columns); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("looking up columns: %w", err)
+	}
+
+	nameColumn := ""
+	for _, c := range columns {
+		if normalizeHeader(c) == "name" {
+			nameColumn = c
+			break
+		}
+	}
+	if nameColumn == "" {
+		return []DuplicatePair{}, nil
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, data ->> $2, data ->> 'email' FROM electorate_voters WHERE electorate_database_id = $1
+	`, databaseID, nameColumn)
+	if err != nil {
+		return nil, fmt.Errorf("listing voters for duplicate check: %w", err)
+	}
+	defer rows.Close()
+
+	type entry struct {
+		id, name, email string
+	}
+	var entries []entry
+	for rows.Next() {
+		var e entry
+		if err := rows.Scan(&e.id, &e.name, &e.email); err != nil {
+			return nil, fmt.Errorf("scanning voter: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating voters: %w", err)
+	}
+
+	byName := map[string][]entry{}
+	byEmail := map[string][]entry{}
+	for _, e := range entries {
+		if n := strings.ToLower(strings.TrimSpace(e.name)); n != "" {
+			byName[n] = append(byName[n], e)
+		}
+		if em := strings.ToLower(strings.TrimSpace(e.email)); em != "" {
+			byEmail[em] = append(byEmail[em], e)
+		}
+	}
+
+	pairs := []DuplicatePair{}
+	seen := map[[2]string]bool{}
+	addGroup := func(group []entry, matchedOn string) {
+		for i := 0; i < len(group); i++ {
+			for j := i + 1; j < len(group); j++ {
+				a, b := group[i], group[j]
+				key := [2]string{a.id, b.id}
+				if a.id > b.id {
+					key = [2]string{b.id, a.id}
+				}
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				pairs = append(pairs, DuplicatePair{
+					VoterAID: a.id, VoterAName: a.name, VoterAEmail: a.email,
+					VoterBID: b.id, VoterBName: b.name, VoterBEmail: b.email,
+					MatchedOn: matchedOn,
+				})
+			}
+		}
+	}
+	for _, group := range byName {
+		if len(group) > 1 {
+			addGroup(group, "name")
+		}
+	}
+	// Exact email matches shouldn't normally exist at all - upload
+	// already rejects a second row with the same email in one database
+	// (see UploadVoters) - but checking costs nothing and catches it
+	// regardless of how such a row got there.
+	for _, group := range byEmail {
+		if len(group) > 1 {
+			addGroup(group, "email")
+		}
+	}
+	return pairs, nil
+}
+
+// RemoveVoters deletes specific voters from a database - the admin side
+// of resolving a flagged duplicate, or just correcting a bad upload.
+// Refuses once the database is linked to any election past DRAFT: by
+// then credentials may already be issued against these exact rows
+// (voter_credentials cascades on electorate_voters' deletion), and
+// silently editing the roll underneath a live or closed election is a
+// materially different, riskier operation than pruning it while it's
+// still being prepared.
+func (s *Service) RemoveVoters(ctx context.Context, databaseID string, voterIDs []string) (int, error) {
+	if len(voterIDs) == 0 {
+		return 0, nil
+	}
+
+	var locked bool
+	if err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS(SELECT 1 FROM elections WHERE electorate_database_id = $1 AND status != 'DRAFT')
+	`, databaseID).Scan(&locked); err != nil {
+		return 0, fmt.Errorf("checking electorate database usage: %w", err)
+	}
+	if locked {
+		return 0, ErrVotersLocked
+	}
+
+	tag, err := s.pool.Exec(ctx, `
+		DELETE FROM electorate_voters WHERE electorate_database_id = $1 AND id = ANY($2)
+	`, databaseID, voterIDs)
+	if err != nil {
+		return 0, fmt.Errorf("removing voters: %w", err)
+	}
+	return int(tag.RowsAffected()), nil
 }
 
 // EligibleVoter is the minimal projection needed to issue voter
