@@ -65,6 +65,17 @@ export function CandidateForm({
         />
       </Field>
 
+      {runningMateRequired && (
+        <Field label="Running mate" htmlFor="candidate-running-mate">
+          <Input
+            id="candidate-running-mate"
+            required
+            value={runningMate}
+            onChange={(e) => setRunningMate(e.target.value)}
+          />
+        </Field>
+      )}
+
       <Field label="Photo" htmlFor="candidate-photo" hint="Optional.">
         <div className="mt-1">
           <ImageUpload
@@ -77,18 +88,10 @@ export function CandidateForm({
       </Field>
 
       {runningMateRequired && (
-        <Field
-          label="Running mate"
-          htmlFor="candidate-running-mate"
-          hint="This portfolio runs as two-person tickets - e.g. a Vice President running with this candidate. They share the one photo above and appear as one choice on the ballot."
-        >
-          <Input
-            id="candidate-running-mate"
-            required
-            value={runningMate}
-            onChange={(e) => setRunningMate(e.target.value)}
-          />
-        </Field>
+        <p className="text-sm text-ink-muted">
+          This portfolio runs as two-person tickets - the running mate above shares this one
+          photo and appears as one choice on the ballot.
+        </p>
       )}
 
       {error && <p className="text-sm text-danger">{error}</p>}
