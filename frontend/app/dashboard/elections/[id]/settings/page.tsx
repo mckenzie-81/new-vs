@@ -27,6 +27,12 @@ export default function ElectionSettingsPage() {
 
   const [description, setDescription] = useState(election.description ?? "");
   const [accentColor, setAccentColor] = useState(election.accentColor ?? "");
+  const [accentColorSecondary, setAccentColorSecondary] = useState(
+    election.accentColorSecondary ?? ""
+  );
+  const [accentColorTertiary, setAccentColorTertiary] = useState(
+    election.accentColorTertiary ?? ""
+  );
   const [logoUrl, setLogoUrl] = useState(election.logoUrl ?? "");
   const [ballotStyle, setBallotStyle] = useState(election.ballotStyle);
   const [submitting, setSubmitting] = useState(false);
@@ -43,6 +49,8 @@ export default function ElectionSettingsPage() {
         ...electionToCreateInput(election),
         description,
         accentColor,
+        accentColorSecondary,
+        accentColorTertiary,
         logoUrl,
         ballotStyle,
       });
@@ -83,7 +91,10 @@ export default function ElectionSettingsPage() {
               Branding
             </p>
             <p className="mt-1 text-sm text-ink-muted">
-              {election.accentColor || election.logoUrl
+              {election.accentColor ||
+              election.accentColorSecondary ||
+              election.accentColorTertiary ||
+              election.logoUrl
                 ? "Custom branding set."
                 : "Using the system default."}
             </p>
@@ -123,16 +134,22 @@ export default function ElectionSettingsPage() {
           <div className="mt-3">
             <BrandingFields
               accentColor={accentColor}
+              accentColorSecondary={accentColorSecondary}
+              accentColorTertiary={accentColorTertiary}
               logoUrl={logoUrl}
               onAccentColorChange={setAccentColor}
+              onAccentColorSecondaryChange={setAccentColorSecondary}
+              onAccentColorTertiaryChange={setAccentColorTertiary}
               onLogoUrlChange={setLogoUrl}
             />
           </div>
-          {(accentColor || logoUrl) && (
+          {(accentColor || accentColorSecondary || accentColorTertiary || logoUrl) && (
             <button
               type="button"
               onClick={() => {
                 setAccentColor("");
+                setAccentColorSecondary("");
+                setAccentColorTertiary("");
                 setLogoUrl("");
               }}
               className="mt-2 text-sm font-semibold text-accent hover:underline"

@@ -77,7 +77,7 @@ export function TurnoutChart({ points }: { points: TurnoutPoint[] }) {
                 >
                   <span
                     className={`block w-full max-w-6 ${
-                      p === shown ? "bg-accent" : "bg-accent-soft"
+                      p === shown ? "bg-accent" : "bg-accent-tertiary"
                     }`}
                     style={{ height: `${(p.count / max) * 100}%`, minHeight: p.count > 0 ? 2 : 0 }}
                   />

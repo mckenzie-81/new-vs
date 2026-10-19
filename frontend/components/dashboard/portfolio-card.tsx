@@ -201,6 +201,7 @@ export function PortfolioCard({
           <CandidateForm
             electionId={electionId}
             portfolioId={portfolio.id}
+            runningMateRequired={portfolio.runningMateRequired}
             onSaved={() => {
               setAddCandidateOpen(false);
               onChange();
@@ -214,6 +215,7 @@ export function PortfolioCard({
           <CandidateForm
             electionId={electionId}
             portfolioId={portfolio.id}
+            runningMateRequired={portfolio.runningMateRequired}
             candidate={editCandidate}
             onSaved={() => {
               setEditCandidate(null);

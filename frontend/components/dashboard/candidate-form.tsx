@@ -10,27 +10,25 @@ import { ImageUpload } from "@/components/ui/image-upload";
 export function CandidateForm({
   electionId,
   portfolioId,
+  runningMateRequired,
   candidate,
   onSaved,
 }: {
   electionId: string;
   portfolioId: string;
+  // Comes from the portfolio, not chosen per-candidate - every candidate
+  // under a portfolio has the same ticket shape.
+  runningMateRequired: boolean;
   candidate?: Candidate;
   onSaved: () => void;
 }) {
   const [fullName, setFullName] = useState(candidate?.fullName ?? "");
   const [photoUrl, setPhotoUrl] = useState(candidate?.photoUrl ?? "");
-  const [runningMates, setRunningMates] = useState<string[]>(candidate?.runningMates ?? []);
+  const [runningMate, setRunningMate] = useState(candidate?.runningMates[0] ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function updateRunningMate(index: number, value: string) {
-    setRunningMates((prev) => prev.map((m, i) => (i === index ? value : m)));
-  }
-
-  function removeRunningMate(index: number) {
-    setRunningMates((prev) => prev.filter((_, i) => i !== index));
-  }
+  const runningMates = runningMateRequired && runningMate.trim() ? [runningMate] : [];
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -78,42 +76,20 @@ export function CandidateForm({
         </div>
       </Field>
 
-      <div>
-        <p className="text-sm font-semibold text-ink">Running mates</p>
-        <p className="mt-1 text-sm text-ink-muted">
-          Optional. For a joint ticket - e.g. a Vice President running together with this
-          candidate. They share this one photo and appear as one choice on the ballot.
-        </p>
-        {runningMates.length > 0 && (
-          <div className="mt-3 flex flex-col gap-2">
-            {runningMates.map((mate, index) => (
-              <div key={index} className="flex items-center gap-2">
-                <Input
-                  value={mate}
-                  onChange={(e) => updateRunningMate(index, e.target.value)}
-                  placeholder="Running mate's name"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeRunningMate(index)}
-                  className="shrink-0 text-sm text-ink-faint hover:text-danger"
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        {runningMates.length < 4 && (
-          <button
-            type="button"
-            onClick={() => setRunningMates((prev) => [...prev, ""])}
-            className="mt-3 text-sm font-semibold text-accent hover:underline"
-          >
-            + Add running mate
-          </button>
-        )}
-      </div>
+      {runningMateRequired && (
+        <Field
+          label="Running mate"
+          htmlFor="candidate-running-mate"
+          hint="This portfolio runs as two-person tickets - e.g. a Vice President running with this candidate. They share the one photo above and appear as one choice on the ballot."
+        >
+          <Input
+            id="candidate-running-mate"
+            required
+            value={runningMate}
+            onChange={(e) => setRunningMate(e.target.value)}
+          />
+        </Field>
+      )}
 
       {error && <p className="text-sm text-danger">{error}</p>}
 

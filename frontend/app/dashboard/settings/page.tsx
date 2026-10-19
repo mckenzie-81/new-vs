@@ -9,6 +9,8 @@ import { BrandingFields } from "@/components/branding/branding-fields";
 
 export default function SettingsPage() {
   const [accentColor, setAccentColor] = useState("");
+  const [accentColorSecondary, setAccentColorSecondary] = useState("");
+  const [accentColorTertiary, setAccentColorTertiary] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -19,6 +21,8 @@ export default function SettingsPage() {
     getBranding()
       .then((settings) => {
         setAccentColor(settings.accentColor ?? "");
+        setAccentColorSecondary(settings.accentColorSecondary ?? "");
+        setAccentColorTertiary(settings.accentColorTertiary ?? "");
         setLogoUrl(settings.logoUrl ?? "");
         setLoaded(true);
       })
@@ -31,8 +35,15 @@ export default function SettingsPage() {
     setSaved(false);
     setSaving(true);
     try {
-      const settings = await updateBranding(accentColor, logoUrl);
+      const settings = await updateBranding(
+        accentColor,
+        accentColorSecondary,
+        accentColorTertiary,
+        logoUrl
+      );
       setAccentColor(settings.accentColor ?? "");
+      setAccentColorSecondary(settings.accentColorSecondary ?? "");
+      setAccentColorTertiary(settings.accentColorTertiary ?? "");
       setLogoUrl(settings.logoUrl ?? "");
       setSaved(true);
     } catch (err) {
@@ -60,8 +71,12 @@ export default function SettingsPage() {
           <form onSubmit={handleSave} className="mt-5 flex flex-col gap-4">
             <BrandingFields
               accentColor={accentColor}
+              accentColorSecondary={accentColorSecondary}
+              accentColorTertiary={accentColorTertiary}
               logoUrl={logoUrl}
               onAccentColorChange={setAccentColor}
+              onAccentColorSecondaryChange={setAccentColorSecondary}
+              onAccentColorTertiaryChange={setAccentColorTertiary}
               onLogoUrlChange={setLogoUrl}
             />
 

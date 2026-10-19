@@ -14,6 +14,8 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
   const [checking, setChecking] = useState(true);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [accentColor, setAccentColor] = useState<string | null>(null);
+  const [accentColorSecondary, setAccentColorSecondary] = useState<string | null>(null);
+  const [accentColorTertiary, setAccentColorTertiary] = useState<string | null>(null);
 
   useEffect(() => {
     getSession()
@@ -24,7 +26,11 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
     // and applies to the whole dashboard shell regardless of who's
     // signed in, so there's no reason to wait on it.
     getBranding()
-      .then((settings) => setAccentColor(settings.accentColor))
+      .then((settings) => {
+        setAccentColor(settings.accentColor);
+        setAccentColorSecondary(settings.accentColorSecondary);
+        setAccentColorTertiary(settings.accentColorTertiary);
+      })
       .catch(() => {});
   }, [router]);
 
@@ -34,7 +40,11 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
 
   return (
     <DashboardUserProvider user={user}>
-      <ThemeScope accentColor={accentColor}>
+      <ThemeScope
+        accentColor={accentColor}
+        accentColorSecondary={accentColorSecondary}
+        accentColorTertiary={accentColorTertiary}
+      >
         <div className="flex min-h-screen bg-page">
           <Sidebar role={user.role} />
           <MobileSidebar role={user.role} open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />

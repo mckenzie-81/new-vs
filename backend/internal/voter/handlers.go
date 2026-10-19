@@ -209,6 +209,10 @@ func (h *Handler) getBallot(w http.ResponseWriter, r *http.Request) {
 type castVoteRequest struct {
 	ElectionID string             `json:"electionId"`
 	Selections map[string]*string `json:"selections"`
+	// ExplicitNo marks a deliberate "No" on an uncontested portfolio's
+	// Yes/No ballot - a "Yes" needs no separate signal, it's just that
+	// portfolio's one candidate chosen in Selections as normal.
+	ExplicitNo map[string]bool `json:"explicitNo"`
 }
 
 func (h *Handler) castVote(w http.ResponseWriter, r *http.Request) {
@@ -223,7 +227,7 @@ func (h *Handler) castVote(w http.ResponseWriter, r *http.Request) {
 	}
 	token := readVoterCookie(r, req.ElectionID)
 
-	err := h.service.CastVote(r.Context(), token, req.Selections)
+	err := h.service.CastVote(r.Context(), token, req.Selections, req.ExplicitNo)
 	switch {
 	case err == nil:
 		clearVoterCookie(w, req.ElectionID, h.cookieSecure)

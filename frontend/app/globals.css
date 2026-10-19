@@ -10,6 +10,10 @@
   --color-page: #f4f5f7;
   --color-accent: #2e4e8f;
   --color-accent-soft: #2e4e8f24;
+  --color-accent-secondary: #1f3a66;
+  --color-accent-secondary-soft: #1f3a6624;
+  --color-accent-tertiary: #6b86b8;
+  --color-accent-tertiary-soft: #6b86b824;
   --color-success: #15803d;
   --color-success-soft: #15803d1f;
   --color-danger: #c0392b;

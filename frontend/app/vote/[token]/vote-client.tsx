@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { ThemeScope } from "@/components/branding/theme-scope";
 import { CandidateOption, candidateListClassName } from "@/components/ballot/candidate-option";
+import { UncontestedTicket } from "@/components/ballot/uncontested-ticket";
 import { PortfolioBanner } from "@/components/ballot/portfolio-banner";
 import {
   CheckCircleIcon,
@@ -73,10 +74,20 @@ export function VoteClient({ token }: { token: string }) {
 
   const [portfolios, setPortfolios] = useState<Portfolio[] | null>(null);
   const [selections, setSelections] = useState<Selections>({});
+  // portfolioId -> true for a deliberate "No" on an uncontested
+  // portfolio's Yes/No ballot - orthogonal to selections, which carries
+  // "Yes" there the same way it carries a normal pick everywhere else.
+  const [explicitNo, setExplicitNo] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const [systemAccentColor, setSystemAccentColor] = useState<string | null>(
+    null,
+  );
+  const [systemAccentColorSecondary, setSystemAccentColorSecondary] = useState<string | null>(
+    null,
+  );
+  const [systemAccentColorTertiary, setSystemAccentColorTertiary] = useState<string | null>(
     null,
   );
   const [systemLogoUrl, setSystemLogoUrl] = useState<string | null>(null);
@@ -85,6 +96,8 @@ export function VoteClient({ token }: { token: string }) {
     getBranding()
       .then((settings) => {
         setSystemAccentColor(settings.accentColor);
+        setSystemAccentColorSecondary(settings.accentColorSecondary);
+        setSystemAccentColorTertiary(settings.accentColorTertiary);
         setSystemLogoUrl(settings.logoUrl);
       })
       .catch(() => {});
@@ -177,6 +190,28 @@ export function VoteClient({ token }: { token: string }) {
       delete next[portfolioId];
       return next;
     });
+    setExplicitNo((prev) => {
+      const next = { ...prev };
+      delete next[portfolioId];
+      return next;
+    });
+  }
+
+  // The ticket component already computes the target state (toggling the
+  // clicked button clears back to abstain) - this just applies it.
+  function respondUncontested(portfolioId: string, candidateId: string, response: "yes" | "no" | null) {
+    setSelections((prev) => {
+      const next = { ...prev };
+      if (response === "yes") next[portfolioId] = candidateId;
+      else delete next[portfolioId];
+      return next;
+    });
+    setExplicitNo((prev) => {
+      const next = { ...prev };
+      if (response === "no") next[portfolioId] = true;
+      else delete next[portfolioId];
+      return next;
+    });
   }
 
   async function handleCast() {
@@ -184,7 +219,7 @@ export function VoteClient({ token }: { token: string }) {
     setSubmitError(null);
     setSubmitting(true);
     try {
-      await castVote(election.id, selections);
+      await castVote(election.id, selections, explicitNo);
       setScreen("done");
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
@@ -204,10 +239,17 @@ export function VoteClient({ token }: { token: string }) {
   }
 
   const effectiveAccentColor = election?.accentColor ?? systemAccentColor;
+  const effectiveAccentColorSecondary =
+    election?.accentColorSecondary ?? systemAccentColorSecondary;
+  const effectiveAccentColorTertiary = election?.accentColorTertiary ?? systemAccentColorTertiary;
   const effectiveLogoUrl = election?.logoUrl ?? systemLogoUrl;
 
   return (
-    <ThemeScope accentColor={effectiveAccentColor}>
+    <ThemeScope
+      accentColor={effectiveAccentColor}
+      accentColorSecondary={effectiveAccentColorSecondary}
+      accentColorTertiary={effectiveAccentColorTertiary}
+    >
       {renderContent()}
     </ThemeScope>
   );
@@ -360,14 +402,22 @@ export function VoteClient({ token }: { token: string }) {
               const candidate = p.candidates.find(
                 (c) => c.id === selections[p.id],
               );
+              const answer =
+                p.candidates.length === 1
+                  ? candidate
+                    ? "Yes"
+                    : explicitNo[p.id]
+                      ? "No"
+                      : "Abstained"
+                  : candidate
+                    ? candidateTicketName(candidate)
+                    : "Abstained";
               return (
                 <li key={p.id} className="py-3">
                   <div className="text-sm font-semibold text-ink">
                     {p.title}
                   </div>
-                  <div className="text-sm text-ink-muted">
-                    {candidate ? candidateTicketName(candidate) : "Abstained"}
-                  </div>
+                  <div className="text-sm text-ink-muted">{answer}</div>
                 </li>
               );
             })}
@@ -412,27 +462,49 @@ export function VoteClient({ token }: { token: string }) {
           >
             <PortfolioBanner
               title={p.title}
-              onReset={selections[p.id] ? () => resetPortfolio(p.id) : undefined}
+              onReset={
+                selections[p.id] || explicitNo[p.id] ? () => resetPortfolio(p.id) : undefined
+              }
             />
-            <div className={`mt-4 ${candidateListClassName}`}>
-              {p.candidates.map((c) => (
-                <CandidateOption
-                  key={c.id}
-                  candidate={c}
-                  selected={selections[p.id] === c.id}
-                  onSelect={() => choose(p.id, c.id)}
-                  style={election?.ballotStyle ?? DEFAULT_BALLOT_STYLE}
+            {p.candidates.length === 1 ? (
+              <div className="mt-4">
+                <UncontestedTicket
+                  candidate={p.candidates[0]}
+                  portfolioTitle={p.title}
+                  response={
+                    selections[p.id] === p.candidates[0].id
+                      ? "yes"
+                      : explicitNo[p.id]
+                        ? "no"
+                        : null
+                  }
+                  onRespond={(response) => respondUncontested(p.id, p.candidates[0].id, response)}
                 />
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className={`mt-4 ${candidateListClassName}`}>
+                {p.candidates.map((c) => (
+                  <CandidateOption
+                    key={c.id}
+                    candidate={c}
+                    selected={selections[p.id] === c.id}
+                    onSelect={() => choose(p.id, c.id)}
+                    style={election?.ballotStyle ?? DEFAULT_BALLOT_STYLE}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         ))}
 
         <div className="mt-5 flex gap-3">
           <SecondaryButton
             type="button"
-            onClick={() => setSelections({})}
-            disabled={Object.keys(selections).length === 0}
+            onClick={() => {
+              setSelections({});
+              setExplicitNo({});
+            }}
+            disabled={Object.keys(selections).length === 0 && Object.keys(explicitNo).length === 0}
           >
             Reset selections
           </SecondaryButton>

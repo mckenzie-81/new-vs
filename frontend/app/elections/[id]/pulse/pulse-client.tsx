@@ -30,12 +30,18 @@ export function PulseClient({ electionId }: { electionId: string }) {
   const [notFound, setNotFound] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [systemAccentColor, setSystemAccentColor] = useState<string | null>(null);
+  const [systemAccentColorSecondary, setSystemAccentColorSecondary] = useState<string | null>(
+    null
+  );
+  const [systemAccentColorTertiary, setSystemAccentColorTertiary] = useState<string | null>(null);
   const [systemLogoUrl, setSystemLogoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     getBranding()
       .then((settings) => {
         setSystemAccentColor(settings.accentColor);
+        setSystemAccentColorSecondary(settings.accentColorSecondary);
+        setSystemAccentColorTertiary(settings.accentColorTertiary);
         setSystemLogoUrl(settings.logoUrl);
       })
       .catch(() => {});
@@ -107,10 +113,17 @@ export function PulseClient({ electionId }: { electionId: string }) {
   ];
 
   const effectiveAccentColor = election.accentColor ?? systemAccentColor;
+  const effectiveAccentColorSecondary =
+    election.accentColorSecondary ?? systemAccentColorSecondary;
+  const effectiveAccentColorTertiary = election.accentColorTertiary ?? systemAccentColorTertiary;
   const effectiveLogoUrl = election.logoUrl ?? systemLogoUrl;
 
   return (
-    <ThemeScope accentColor={effectiveAccentColor}>
+    <ThemeScope
+      accentColor={effectiveAccentColor}
+      accentColorSecondary={effectiveAccentColorSecondary}
+      accentColorTertiary={effectiveAccentColorTertiary}
+    >
     <div className="mx-auto max-w-3xl px-6 py-12">
       {effectiveLogoUrl && (
         // eslint-disable-next-line @next/next/no-img-element

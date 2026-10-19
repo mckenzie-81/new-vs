@@ -150,6 +150,8 @@ function emptyElectionInput() {
     electorateFilter: {},
     voterVerificationColumns: [],
     accentColor: "",
+    accentColorSecondary: "",
+    accentColorTertiary: "",
     logoUrl: "",
     ballotStyle: "",
   };

@@ -6,6 +6,71 @@ import { PortfolioBanner } from "@/components/ballot/portfolio-banner";
 // published standings - same tally, same presentation, so a published
 // result never looks different from what the election's own admins see.
 export function PortfolioResults({ portfolio: p }: { portfolio: PortfolioResult }) {
+  if (p.noCount !== null && p.candidates.length === 1) {
+    const candidate = p.candidates[0];
+    const yesCount = candidate.voteCount;
+    const noCount = p.noCount ?? 0;
+    const approved = yesCount > noCount;
+    const maxYesNo = Math.max(1, yesCount, noCount);
+    return (
+      <div>
+        <PortfolioBanner
+          title={p.title}
+          trailing={<p className="text-sm text-ink-faint">{p.totalBallots} ballots cast</p>}
+        />
+        <div className="mt-4 flex flex-col gap-3">
+          <div
+            className={`flex items-center gap-3 border-2 p-2.5 ${
+              approved ? "border-success" : "border-line"
+            }`}
+          >
+            <CandidatePhoto candidate={candidate} className="h-14 w-12 shrink-0 text-lg" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <span
+                  className={`truncate text-sm font-semibold ${
+                    approved ? "text-success" : "text-ink"
+                  }`}
+                >
+                  {candidateTicketName(candidate)}
+                  {approved && " ✓"}
+                </span>
+              </div>
+              <p className="text-xs text-ink-faint">As {p.title}</p>
+            </div>
+          </div>
+
+          {[
+            { label: "Yes", count: yesCount, tone: "success" as const },
+            { label: "No", count: noCount, tone: "danger" as const },
+          ].map(({ label, count, tone }) => (
+            <div key={label}>
+              <div className="flex items-baseline justify-between text-sm">
+                <span className={`font-medium ${tone === "success" ? "text-success" : "text-danger"}`}>
+                  {label}
+                </span>
+                <span className="tabular-nums text-ink-muted">{count}</span>
+              </div>
+              <div className="mt-1 h-2 w-full bg-page">
+                <div
+                  className={`h-2 transition-[width] duration-300 ${
+                    tone === "success" ? "bg-success" : "bg-danger"
+                  }`}
+                  style={{ width: `${(count / maxYesNo) * 100}%` }}
+                />
+              </div>
+            </div>
+          ))}
+
+          <div className="flex items-baseline justify-between px-0.5 text-sm text-ink-faint">
+            <span>Abstained</span>
+            <span className="tabular-nums">{p.abstainCount}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const maxVotes = Math.max(1, ...p.candidates.map((c) => c.voteCount));
   const sorted = [...p.candidates].sort((a, b) => b.voteCount - a.voteCount);
   // Every candidate at the max is a winner - a tie doesn't pick one to

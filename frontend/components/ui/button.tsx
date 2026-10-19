@@ -1,7 +1,7 @@
 import { ButtonHTMLAttributes, forwardRef } from "react";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "default" | "accent" | "danger";
+  variant?: "default" | "accent" | "danger" | "success";
   fullWidth?: boolean;
 };
 
@@ -15,6 +15,7 @@ const fillClasses: Record<NonNullable<ButtonProps["variant"]>, string> = {
   default: "bg-ink",
   accent: "bg-accent",
   danger: "bg-danger",
+  success: "bg-success",
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
@@ -35,12 +36,15 @@ type SecondaryButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const textClasses: Record<NonNullable<SecondaryButtonProps["tone"]>, string> = {
-  default: "text-ink",
+  // The secondary accent shade on hover, not plain ink - gives this
+  // button real brand personality while Button's primary accent stays
+  // reserved for the one most-emphasized action on a screen.
+  default: "text-ink hover:text-accent-secondary",
   danger: "text-danger",
 };
 
 const borderHoverClasses: Record<NonNullable<SecondaryButtonProps["tone"]>, string> = {
-  default: "hover:border-ink",
+  default: "hover:border-accent-secondary",
   danger: "hover:border-danger",
 };
 

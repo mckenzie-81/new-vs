@@ -36,13 +36,19 @@ type Candidate struct {
 }
 
 type Portfolio struct {
-	ID           string      `json:"id"`
-	ElectionID   string      `json:"electionId"`
-	Title        string      `json:"title"`
-	Description  *string     `json:"description"`
-	DisplayOrder int         `json:"displayOrder"`
-	CreatedAt    time.Time   `json:"createdAt"`
-	Candidates   []Candidate `json:"candidates"`
+	ID          string  `json:"id"`
+	ElectionID  string  `json:"electionId"`
+	Title       string  `json:"title"`
+	Description *string `json:"description"`
+	// RunningMateRequired makes every candidate under this portfolio a
+	// fixed two-person ticket (one running mate, no more, no less) rather
+	// than the free-form 0-4 a candidate could carry before - a portfolio
+	// either always runs as tickets or never does, not candidate by
+	// candidate.
+	RunningMateRequired bool        `json:"runningMateRequired"`
+	DisplayOrder        int         `json:"displayOrder"`
+	CreatedAt           time.Time   `json:"createdAt"`
+	Candidates          []Candidate `json:"candidates"`
 }
 
 // OrderEntry is one item in a reorder request - an id and the position it
@@ -69,7 +75,7 @@ func (s *Service) requireDraft(ctx context.Context, electionID string) error {
 	return nil
 }
 
-func (s *Service) CreatePortfolio(ctx context.Context, electionID, title, description string) (*Portfolio, error) {
+func (s *Service) CreatePortfolio(ctx context.Context, electionID, title, description string, runningMateRequired bool) (*Portfolio, error) {
 	if err := s.requireDraft(ctx, electionID); err != nil {
 		return nil, err
 	}
@@ -89,10 +95,12 @@ func (s *Service) CreatePortfolio(ctx context.Context, electionID, title, descri
 
 	p := Portfolio{ElectionID: electionID, Candidates: []Candidate{}}
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO portfolios (election_id, title, description, display_order)
-		SELECT $1, $2, $3, coalesce(max(display_order) + 1, 0) FROM portfolios WHERE election_id = $1
-		RETURNING id, title, description, display_order, created_at
-	`, electionID, title, desc).Scan(&p.ID, &p.Title, &p.Description, &p.DisplayOrder, &p.CreatedAt)
+		INSERT INTO portfolios (election_id, title, description, running_mate_required, display_order)
+		SELECT $1, $2, $3, $4, coalesce(max(display_order) + 1, 0) FROM portfolios WHERE election_id = $1
+		RETURNING id, title, description, running_mate_required, display_order, created_at
+	`, electionID, title, desc, runningMateRequired).Scan(
+		&p.ID, &p.Title, &p.Description, &p.RunningMateRequired, &p.DisplayOrder, &p.CreatedAt,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("creating portfolio: %w", err)
 	}
@@ -150,9 +158,13 @@ func (s *Service) ReorderPortfolios(ctx context.Context, electionID string, orde
 	return nil
 }
 
-const maxRunningMates = 4
-
-func validateCandidateInput(fullName, photoURL string, runningMates []string) (string, *string, []string, error) {
+// validateCandidateInput enforces the portfolio's own ticket shape: when
+// runningMateRequired is true, a candidate must carry exactly one running
+// mate (a two-person ticket, never more); when false, none at all. This
+// replaced an earlier "0 to 4, candidate's own choice" rule - a portfolio
+// either runs as tickets or it doesn't, uniformly for every candidate in
+// it.
+func validateCandidateInput(fullName, photoURL string, runningMates []string, runningMateRequired bool) (string, *string, []string, error) {
 	fullName = strings.TrimSpace(fullName)
 	if fullName == "" {
 		return "", nil, nil, fmt.Errorf("%w: name is required", ErrInvalidInput)
@@ -169,9 +181,6 @@ func validateCandidateInput(fullName, photoURL string, runningMates []string) (s
 		photoURLVal = &trimmed
 	}
 
-	if len(runningMates) > maxRunningMates {
-		return "", nil, nil, fmt.Errorf("%w: at most %d running mates are allowed", ErrInvalidInput, maxRunningMates)
-	}
 	mates := make([]string, 0, len(runningMates))
 	for _, m := range runningMates {
 		trimmed := strings.TrimSpace(m)
@@ -184,7 +193,32 @@ func validateCandidateInput(fullName, photoURL string, runningMates []string) (s
 		mates = append(mates, trimmed)
 	}
 
+	if runningMateRequired && len(mates) != 1 {
+		return "", nil, nil, fmt.Errorf("%w: this portfolio requires exactly one running mate per ticket", ErrInvalidInput)
+	}
+	if !runningMateRequired && len(mates) != 0 {
+		return "", nil, nil, fmt.Errorf("%w: this portfolio doesn't use running mates", ErrInvalidInput)
+	}
+
 	return fullName, photoURLVal, mates, nil
+}
+
+// portfolioRunningMateRequired looks up just the one flag needed to
+// validate a candidate against its portfolio's ticket shape, scoped to
+// the given election so a candidate can never be attached to a portfolio
+// from a different election via a mismatched id.
+func (s *Service) portfolioRunningMateRequired(ctx context.Context, electionID, portfolioID string) (bool, error) {
+	var required bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT running_mate_required FROM portfolios WHERE id = $1 AND election_id = $2
+	`, portfolioID, electionID).Scan(&required)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, ErrNotFound
+	}
+	if err != nil {
+		return false, fmt.Errorf("looking up portfolio: %w", err)
+	}
+	return required, nil
 }
 
 func (s *Service) CreateCandidate(ctx context.Context, electionID, portfolioID, fullName, photoURL string, runningMates []string) (*Candidate, error) {
@@ -192,7 +226,11 @@ func (s *Service) CreateCandidate(ctx context.Context, electionID, portfolioID, 
 		return nil, err
 	}
 
-	fullName, photoURLVal, mates, err := validateCandidateInput(fullName, photoURL, runningMates)
+	runningMateRequired, err := s.portfolioRunningMateRequired(ctx, electionID, portfolioID)
+	if err != nil {
+		return nil, err
+	}
+	fullName, photoURLVal, mates, err := validateCandidateInput(fullName, photoURL, runningMates, runningMateRequired)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +261,11 @@ func (s *Service) UpdateCandidate(ctx context.Context, electionID, portfolioID, 
 		return nil, err
 	}
 
-	fullName, photoURLVal, mates, err := validateCandidateInput(fullName, photoURL, runningMates)
+	runningMateRequired, err := s.portfolioRunningMateRequired(ctx, electionID, portfolioID)
+	if err != nil {
+		return nil, err
+	}
+	fullName, photoURLVal, mates, err := validateCandidateInput(fullName, photoURL, runningMates, runningMateRequired)
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +346,7 @@ func (s *Service) ReorderCandidates(ctx context.Context, electionID, portfolioID
 // actually wants it for.
 func (s *Service) ListPortfolios(ctx context.Context, electionID string) ([]Portfolio, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, election_id, title, description, display_order, created_at
+		SELECT id, election_id, title, description, running_mate_required, display_order, created_at
 		FROM portfolios
 		WHERE election_id = $1
 		ORDER BY display_order ASC
@@ -318,7 +360,9 @@ func (s *Service) ListPortfolios(ctx context.Context, electionID string) ([]Port
 	for rows.Next() {
 		var p Portfolio
 		p.Candidates = []Candidate{}
-		if err := rows.Scan(&p.ID, &p.ElectionID, &p.Title, &p.Description, &p.DisplayOrder, &p.CreatedAt); err != nil {
+		if err := rows.Scan(
+			&p.ID, &p.ElectionID, &p.Title, &p.Description, &p.RunningMateRequired, &p.DisplayOrder, &p.CreatedAt,
+		); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("scanning portfolio: %w", err)
 		}

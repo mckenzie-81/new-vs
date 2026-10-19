@@ -63,13 +63,15 @@ export default function ElectoratePage() {
       )}
 
       {createOpen && (
-        <Modal title="Create an electorate database" onClose={() => setCreateOpen(false)}>
-          <ElectorateDatabaseForm
-            onCreated={() => {
-              setCreateOpen(false);
-              refresh();
-            }}
-          />
+        <Modal
+          title="Create an electorate database"
+          onClose={() => setCreateOpen(false)}
+          closeOnOverlayClick={false}
+        >
+          {/* onCreated only refreshes the list in the background - the
+              form itself shows a "what next" confirmation after a
+              successful create, same pattern as creating an election. */}
+          <ElectorateDatabaseForm onCreated={refresh} />
         </Modal>
       )}
     </div>

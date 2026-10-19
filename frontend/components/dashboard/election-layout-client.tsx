@@ -269,7 +269,11 @@ export function ElectionLayoutClient({ children }: { children: React.ReactNode }
         })}
       </div>
 
-      <ThemeScope accentColor={election.accentColor}>
+      <ThemeScope
+        accentColor={election.accentColor}
+        accentColorSecondary={election.accentColorSecondary}
+        accentColorTertiary={election.accentColorTertiary}
+      >
         <ElectionProvider value={{ election, assignedAdmins, refresh }}>{children}</ElectionProvider>
       </ThemeScope>
 

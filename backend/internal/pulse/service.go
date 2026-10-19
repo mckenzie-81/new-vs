@@ -41,14 +41,16 @@ var ErrNotPublic = errors.New("this election isn't public yet")
 const snapshotTTL = 15 * time.Second
 
 type ElectionInfo struct {
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	Description *string   `json:"description"`
-	Status      string    `json:"status"`
-	StartTime   time.Time `json:"startTime"`
-	EndTime     time.Time `json:"endTime"`
-	AccentColor *string   `json:"accentColor"`
-	LogoURL     *string   `json:"logoUrl"`
+	ID                   string    `json:"id"`
+	Title                string    `json:"title"`
+	Description          *string   `json:"description"`
+	Status               string    `json:"status"`
+	StartTime            time.Time `json:"startTime"`
+	EndTime              time.Time `json:"endTime"`
+	AccentColor          *string   `json:"accentColor"`
+	AccentColorSecondary *string   `json:"accentColorSecondary"`
+	AccentColorTertiary  *string   `json:"accentColorTertiary"`
+	LogoURL              *string   `json:"logoUrl"`
 }
 
 type TurnoutPoint struct {
@@ -164,14 +166,16 @@ func (s *Service) GetSnapshot(ctx context.Context, electionID string) (*Snapshot
 
 	return &Snapshot{
 		Election: ElectionInfo{
-			ID:          e.ID,
-			Title:       e.Title,
-			Description: e.Description,
-			Status:      e.Status,
-			StartTime:   e.StartTime,
-			EndTime:     e.EndTime,
-			AccentColor: e.AccentColor,
-			LogoURL:     e.LogoURL,
+			ID:                   e.ID,
+			Title:                e.Title,
+			Description:          e.Description,
+			Status:               e.Status,
+			StartTime:            e.StartTime,
+			EndTime:              e.EndTime,
+			AccentColor:          e.AccentColor,
+			AccentColorSecondary: e.AccentColorSecondary,
+			AccentColorTertiary:  e.AccentColorTertiary,
+			LogoURL:              e.LogoURL,
 		},
 		EligibleCount:       row.EligibleCount,
 		VotedCount:          row.VotedCount,

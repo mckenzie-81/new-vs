@@ -148,6 +148,8 @@ export interface Election {
   electorateFilter: Record<string, string>;
   voterVerificationColumns: string[];
   accentColor: string | null;
+  accentColorSecondary: string | null;
+  accentColorTertiary: string | null;
   logoUrl: string | null;
   ballotStyle: string;
   createdAt: string;
@@ -163,6 +165,8 @@ export interface CreateElectionInput {
   electorateFilter: Record<string, string>;
   voterVerificationColumns: string[];
   accentColor: string;
+  accentColorSecondary: string;
+  accentColorTertiary: string;
   logoUrl: string;
   ballotStyle: string;
 }
@@ -183,6 +187,8 @@ export function electionToCreateInput(election: Election): CreateElectionInput {
     electorateFilter: election.electorateFilter,
     voterVerificationColumns: election.voterVerificationColumns,
     accentColor: election.accentColor ?? "",
+    accentColorSecondary: election.accentColorSecondary ?? "",
+    accentColorTertiary: election.accentColorTertiary ?? "",
     logoUrl: election.logoUrl ?? "",
     ballotStyle: election.ballotStyle,
   };
@@ -248,7 +254,7 @@ export const BALLOT_STYLES: { value: string; label: string; description: string 
   {
     value: "cards",
     label: "Cards",
-    description: "A two-column grid of taller candidate cards with a bigger photo.",
+    description: "Still one per row like compact, but a taller card - a bigger photo, name below it.",
   },
 ];
 export const DEFAULT_BALLOT_STYLE = "compact";
@@ -258,6 +264,10 @@ export interface Portfolio {
   electionId: string;
   title: string;
   description: string | null;
+  // Every candidate under this portfolio is a fixed two-person ticket
+  // (exactly one running mate) when true, or a single person when false -
+  // set once at creation, applies to the whole portfolio uniformly.
+  runningMateRequired: boolean;
   displayOrder: number;
   createdAt: string;
   candidates: Candidate[];
@@ -276,12 +286,13 @@ export async function listPortfolios(electionId: string): Promise<Portfolio[]> {
 export async function createPortfolio(
   electionId: string,
   title: string,
-  description: string
+  description: string,
+  runningMateRequired: boolean
 ): Promise<Portfolio> {
   const response = await apiFetch(`/api/elections/${electionId}/portfolios`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title, description }),
+    body: JSON.stringify({ title, description, runningMateRequired }),
   });
   return response.json();
 }
@@ -594,6 +605,10 @@ export interface PortfolioResult {
   portfolioId: string;
   title: string;
   candidates: CandidateResult[];
+  // Set only for an uncontested portfolio (exactly one candidate/ticket) -
+  // a deliberate "No" on its Yes/No ballot, kept separate from
+  // abstainCount.
+  noCount: number | null;
   abstainCount: number;
   totalBallots: number;
 }
@@ -617,6 +632,8 @@ export interface VoteElectionSummary {
   startTime: string;
   endTime: string;
   accentColor: string | null;
+  accentColorSecondary: string | null;
+  accentColorTertiary: string | null;
   logoUrl: string | null;
   ballotStyle: string;
 }
@@ -656,12 +673,13 @@ export async function getVoterBallot(electionId: string): Promise<VoterBallot> {
 
 export async function castVote(
   electionId: string,
-  selections: Record<string, string | null>
+  selections: Record<string, string | null>,
+  explicitNo: Record<string, boolean> = {}
 ): Promise<void> {
   await apiFetch(`/api/vote/cast`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ electionId, selections }),
+    body: JSON.stringify({ electionId, selections, explicitNo }),
   });
 }
 
@@ -696,6 +714,8 @@ export interface PulseSnapshot {
     startTime: string;
     endTime: string;
     accentColor: string | null;
+    accentColorSecondary: string | null;
+    accentColorTertiary: string | null;
     logoUrl: string | null;
   };
   eligibleCount: number;
@@ -725,6 +745,8 @@ export async function publishResults(electionId: string): Promise<ElectionResult
 
 export interface BrandingSettings {
   accentColor: string | null;
+  accentColorSecondary: string | null;
+  accentColorTertiary: string | null;
   logoUrl: string | null;
   updatedAt: string;
 }
@@ -736,12 +758,14 @@ export async function getBranding(): Promise<BrandingSettings> {
 
 export async function updateBranding(
   accentColor: string,
+  accentColorSecondary: string,
+  accentColorTertiary: string,
   logoUrl: string
 ): Promise<BrandingSettings> {
   const response = await apiFetch("/api/settings/branding", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ accentColor, logoUrl }),
+    body: JSON.stringify({ accentColor, accentColorSecondary, accentColorTertiary, logoUrl }),
   });
   return response.json();
 }

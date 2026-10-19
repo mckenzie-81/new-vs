@@ -111,6 +111,8 @@ type createRequest struct {
 	ElectorateFilter         map[string]string `json:"electorateFilter"`
 	VoterVerificationColumns []string          `json:"voterVerificationColumns"`
 	AccentColor              string            `json:"accentColor"`
+	AccentColorSecondary     string            `json:"accentColorSecondary"`
+	AccentColorTertiary      string            `json:"accentColorTertiary"`
 	LogoURL                  string            `json:"logoUrl"`
 	BallotStyle              string            `json:"ballotStyle"`
 }
@@ -155,6 +157,8 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		ElectorateFilter:         req.ElectorateFilter,
 		VoterVerificationColumns: req.VoterVerificationColumns,
 		AccentColor:              req.AccentColor,
+		AccentColorSecondary:     req.AccentColorSecondary,
+		AccentColorTertiary:      req.AccentColorTertiary,
 		LogoURL:                  req.LogoURL,
 		BallotStyle:              req.BallotStyle,
 	})
@@ -219,6 +223,8 @@ func (h *Handler) updateElection(w http.ResponseWriter, r *http.Request) {
 		ElectorateFilter:         req.ElectorateFilter,
 		VoterVerificationColumns: req.VoterVerificationColumns,
 		AccentColor:              req.AccentColor,
+		AccentColorSecondary:     req.AccentColorSecondary,
+		AccentColorTertiary:      req.AccentColorTertiary,
 		LogoURL:                  req.LogoURL,
 		BallotStyle:              req.BallotStyle,
 	})
@@ -324,8 +330,9 @@ func (h *Handler) listPortfolios(w http.ResponseWriter, r *http.Request) {
 }
 
 type createPortfolioRequest struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
+	Title               string `json:"title"`
+	Description         string `json:"description"`
+	RunningMateRequired bool   `json:"runningMateRequired"`
 }
 
 func (h *Handler) createPortfolio(w http.ResponseWriter, r *http.Request) {
@@ -342,7 +349,7 @@ func (h *Handler) createPortfolio(w http.ResponseWriter, r *http.Request) {
 	}
 
 	electionID := r.PathValue("electionId")
-	result, err := h.service.CreatePortfolio(r.Context(), electionID, req.Title, req.Description)
+	result, err := h.service.CreatePortfolio(r.Context(), electionID, req.Title, req.Description, req.RunningMateRequired)
 
 	switch {
 	case err == nil:

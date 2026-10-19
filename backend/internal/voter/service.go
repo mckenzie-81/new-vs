@@ -153,14 +153,16 @@ func (s *Service) IssueAndInviteCredentials(ctx context.Context, electionID stri
 // everything else admin-internal, which has no business in a voter-facing
 // response.
 type ElectionSummary struct {
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	Description *string   `json:"description"`
-	StartTime   time.Time `json:"startTime"`
-	EndTime     time.Time `json:"endTime"`
-	AccentColor *string   `json:"accentColor"`
-	LogoURL     *string   `json:"logoUrl"`
-	BallotStyle string    `json:"ballotStyle"`
+	ID                   string    `json:"id"`
+	Title                string    `json:"title"`
+	Description          *string   `json:"description"`
+	StartTime            time.Time `json:"startTime"`
+	EndTime              time.Time `json:"endTime"`
+	AccentColor          *string   `json:"accentColor"`
+	AccentColorSecondary *string   `json:"accentColorSecondary"`
+	AccentColorTertiary  *string   `json:"accentColorTertiary"`
+	LogoURL              *string   `json:"logoUrl"`
+	BallotStyle          string    `json:"ballotStyle"`
 }
 
 type TokenStatus struct {
@@ -203,7 +205,8 @@ func (s *Service) GetTokenStatus(ctx context.Context, rawToken string) (*TokenSt
 	}
 	summary := &ElectionSummary{
 		ID: e.ID, Title: e.Title, Description: e.Description, StartTime: e.StartTime, EndTime: e.EndTime,
-		AccentColor: e.AccentColor, LogoURL: e.LogoURL, BallotStyle: e.BallotStyle,
+		AccentColor: e.AccentColor, AccentColorSecondary: e.AccentColorSecondary, AccentColorTertiary: e.AccentColorTertiary,
+		LogoURL: e.LogoURL, BallotStyle: e.BallotStyle,
 	}
 
 	switch status {
@@ -407,7 +410,8 @@ func (s *Service) GetBallot(ctx context.Context, rawToken string) (*BallotResult
 	return &BallotResult{
 		Election: ElectionSummary{
 			ID: e.ID, Title: e.Title, Description: e.Description, StartTime: e.StartTime, EndTime: e.EndTime,
-			AccentColor: e.AccentColor, LogoURL: e.LogoURL, BallotStyle: e.BallotStyle,
+			AccentColor: e.AccentColor, AccentColorSecondary: e.AccentColorSecondary, AccentColorTertiary: e.AccentColorTertiary,
+			LogoURL: e.LogoURL, BallotStyle: e.BallotStyle,
 		},
 		Portfolios: portfolios,
 	}, nil
@@ -418,7 +422,7 @@ func (s *Service) GetBallot(ctx context.Context, rawToken string) (*BallotResult
 // each one in the submission, so a portfolio missing from the map (or the
 // whole map being empty) is simply an abstain on every portfolio, exactly
 // like leaving every choice blank in the UI.
-func (s *Service) CastVote(ctx context.Context, rawToken string, selections map[string]*string) error {
+func (s *Service) CastVote(ctx context.Context, rawToken string, selections map[string]*string, explicitNo map[string]bool) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("beginning transaction: %w", err)
@@ -482,10 +486,19 @@ func (s *Service) CastVote(ctx context.Context, rawToken string, selections map[
 			candidateID = chosen
 		}
 
+		// An explicit "No" only means anything for an uncontested
+		// portfolio's Yes/No ballot, and never alongside a candidate
+		// choice - both would be a contradictory ballot for the same
+		// portfolio.
+		isNo := explicitNo[p.ID]
+		if isNo && (len(p.Candidates) != 1 || candidateID != nil) {
+			return ErrInvalidSelection
+		}
+
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO votes (election_id, portfolio_id, candidate_id, credential_hash)
-			VALUES ($1, $2, $3, $4)
-		`, electionID, p.ID, candidateID, voteHash); err != nil {
+			INSERT INTO votes (election_id, portfolio_id, candidate_id, credential_hash, is_explicit_no)
+			VALUES ($1, $2, $3, $4, $5)
+		`, electionID, p.ID, candidateID, voteHash, isNo); err != nil {
 			return fmt.Errorf("casting vote: %w", err)
 		}
 	}
@@ -525,11 +538,17 @@ type CandidateResult struct {
 }
 
 type PortfolioResult struct {
-	PortfolioID  string            `json:"portfolioId"`
-	Title        string            `json:"title"`
-	Candidates   []CandidateResult `json:"candidates"`
-	AbstainCount int               `json:"abstainCount"`
-	TotalBallots int               `json:"totalBallots"`
+	PortfolioID string            `json:"portfolioId"`
+	Title       string            `json:"title"`
+	Candidates  []CandidateResult `json:"candidates"`
+	// NoCount is only set for an uncontested portfolio (exactly one
+	// candidate/ticket) - a deliberate "No" on its Yes/No ballot, kept
+	// separate from AbstainCount so a real rejection signal never gets
+	// silently lumped in with people who just skipped that portfolio. Nil
+	// for any portfolio with more than one candidate.
+	NoCount      *int `json:"noCount"`
+	AbstainCount int  `json:"abstainCount"`
+	TotalBallots int  `json:"totalBallots"`
 }
 
 type Results struct {
@@ -556,28 +575,36 @@ func (s *Service) GetResults(ctx context.Context, electionID string) (*Results, 
 	}
 
 	rows, err := s.pool.Query(ctx, `
-		SELECT portfolio_id, candidate_id, count(*) FROM votes WHERE election_id = $1 GROUP BY portfolio_id, candidate_id
+		SELECT portfolio_id, candidate_id, is_explicit_no, count(*)
+		FROM votes WHERE election_id = $1 GROUP BY portfolio_id, candidate_id, is_explicit_no
 	`, electionID)
 	if err != nil {
 		return nil, fmt.Errorf("tallying votes: %w", err)
 	}
 	defer rows.Close()
 
-	// portfolioID -> candidateID ("" means abstain) -> count
-	counts := map[string]map[string]int{}
+	// portfolioID -> tallyKey -> count. candidate == "" is either an
+	// abstain (no == false) or an explicit No (no == true) - a candidate
+	// row is never also explicit-No, CastVote guarantees that.
+	type tallyKey struct {
+		candidate string
+		no        bool
+	}
+	counts := map[string]map[tallyKey]int{}
 	for rows.Next() {
 		var portfolioID string
 		var candidateID *string
+		var isNo bool
 		var count int
-		if err := rows.Scan(&portfolioID, &candidateID, &count); err != nil {
+		if err := rows.Scan(&portfolioID, &candidateID, &isNo, &count); err != nil {
 			return nil, fmt.Errorf("scanning tally: %w", err)
 		}
-		key := ""
+		key := tallyKey{no: isNo}
 		if candidateID != nil {
-			key = *candidateID
+			key.candidate = *candidateID
 		}
 		if counts[portfolioID] == nil {
-			counts[portfolioID] = map[string]int{}
+			counts[portfolioID] = map[tallyKey]int{}
 		}
 		counts[portfolioID][key] = count
 	}
@@ -590,14 +617,19 @@ func (s *Service) GetResults(ctx context.Context, electionID string) (*Results, 
 		pr := PortfolioResult{PortfolioID: p.ID, Title: p.Title, Candidates: []CandidateResult{}}
 		total := 0
 		for _, c := range p.Candidates {
-			count := counts[p.ID][c.ID]
+			count := counts[p.ID][tallyKey{candidate: c.ID}]
 			pr.Candidates = append(pr.Candidates, CandidateResult{
 				CandidateID: c.ID, FullName: c.FullName, PhotoURL: c.PhotoURL, RunningMates: c.RunningMates, VoteCount: count,
 			})
 			total += count
 		}
-		pr.AbstainCount = counts[p.ID][""]
+		pr.AbstainCount = counts[p.ID][tallyKey{}]
 		total += pr.AbstainCount
+		if len(p.Candidates) == 1 {
+			no := counts[p.ID][tallyKey{no: true}]
+			pr.NoCount = &no
+			total += no
+		}
 		pr.TotalBallots = total
 		results.Portfolios = append(results.Portfolios, pr)
 	}

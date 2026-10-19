@@ -15,6 +15,7 @@ export function PortfolioForm({
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [runningMateRequired, setRunningMateRequired] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,7 +24,7 @@ export function PortfolioForm({
     setError(null);
     setSubmitting(true);
     try {
-      await createPortfolio(electionId, title, description);
+      await createPortfolio(electionId, title, description, runningMateRequired);
       onCreated();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
@@ -49,6 +50,23 @@ export function PortfolioForm({
           onChange={(e) => setDescription(e.target.value)}
         />
       </Field>
+
+      <label className="flex items-start gap-2.5 text-sm text-ink">
+        <input
+          type="checkbox"
+          checked={runningMateRequired}
+          onChange={(e) => setRunningMateRequired(e.target.checked)}
+          className="mt-0.5"
+        />
+        <span>
+          <span className="font-semibold">Running mate required</span>
+          <span className="block text-ink-muted">
+            Every candidate added under this portfolio will be a two-person ticket (e.g.
+            President &amp; Vice President), sharing one photo. Can&apos;t be changed after the
+            portfolio is created.
+          </span>
+        </span>
+      </label>
 
       {error && <p className="text-sm text-danger">{error}</p>}
 
