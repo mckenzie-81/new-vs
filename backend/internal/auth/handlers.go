@@ -257,7 +257,7 @@ func sendPasswordResetEmailStub(appBaseURL, email, rawToken string) {
 }
 
 func (h *Handler) logAudit(ctx context.Context, entry audit.Entry) {
-	if err := audit.Log(ctx, h.pool, entry); err != nil {
+	if err := audit.LogStandalone(ctx, h.pool, entry); err != nil {
 		log.Printf("failed to write audit log for action %q: %v", entry.Action, err)
 	}
 }

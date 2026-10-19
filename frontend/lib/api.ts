@@ -788,6 +788,41 @@ async function presignUpload(kind: UploadKind, contentType: string): Promise<Pre
   return response.json();
 }
 
+export interface AuditLogEntry {
+  seq: number;
+  actorUserId: string | null;
+  actorName: string | null;
+  actorEmail: string | null;
+  action: string;
+  metadata: Record<string, unknown>;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string;
+}
+
+export async function listAuditLog(
+  filter: { before?: number; limit?: number; electionId?: string } = {}
+): Promise<AuditLogEntry[]> {
+  const params = new URLSearchParams();
+  if (filter.before !== undefined) params.set("before", String(filter.before));
+  if (filter.limit !== undefined) params.set("limit", String(filter.limit));
+  if (filter.electionId) params.set("electionId", filter.electionId);
+  const response = await apiFetch(`/api/audit-log?${params.toString()}`);
+  const body = await response.json();
+  return body.entries;
+}
+
+export interface AuditChainVerification {
+  ok: boolean;
+  entries: number;
+  brokenAtSeq?: number;
+}
+
+export async function verifyAuditLog(): Promise<AuditChainVerification> {
+  const response = await apiFetch("/api/audit-log/verify");
+  return response.json();
+}
+
 // uploadFile gets a presigned URL from our backend, then PUTs the file
 // straight to R2 with a plain fetch (no credentials, no API base URL -
 // it's a different origin entirely) so the file itself never passes

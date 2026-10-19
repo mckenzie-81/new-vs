@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"backend/internal/auditlog"
 	"backend/internal/auth"
 	"backend/internal/bootstrap"
 	"backend/internal/branding"
@@ -63,6 +64,8 @@ func main() {
 		log.Printf("uploads disabled: R2 isn't configured (set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_BASE_URL)")
 	}
 
+	auditLogHandler := auditlog.NewHandler(pool, authService)
+
 	mux := http.NewServeMux()
 	bootstrapHandler.Register(mux)
 	authHandler.Register(mux)
@@ -72,6 +75,7 @@ func main() {
 	pulseHandler.Register(mux)
 	brandingHandler.Register(mux)
 	storageHandler.Register(mux)
+	auditLogHandler.Register(mux)
 
 	handler := httpx.CORS(cfg.AppBaseURL, mux)
 
