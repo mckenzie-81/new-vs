@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   getVoteTokenStatus,
   authenticateVoter,
@@ -310,6 +311,14 @@ export function VoteClient({ token }: { token: string }) {
               You&apos;ve already cast your ballot
               {election ? ` for ${election.title}` : ""}. Thank you for voting.
             </p>
+            {election && (
+              <Link
+                href={`/elections/${election.id}/pulse`}
+                className="mt-4 inline-block text-sm font-semibold text-accent hover:underline"
+              >
+                View live turnout →
+              </Link>
+            )}
           </div>
         </CenteredCard>
       );
@@ -345,6 +354,14 @@ export function VoteClient({ token }: { token: string }) {
               Thank you for voting{election ? ` in ${election.title}` : ""}. You
               can close this page now.
             </p>
+            {election && (
+              <Link
+                href={`/elections/${election.id}/pulse`}
+                className="mt-4 inline-block text-sm font-semibold text-accent hover:underline"
+              >
+                View live turnout →
+              </Link>
+            )}
           </div>
         </CenteredCard>
       );
