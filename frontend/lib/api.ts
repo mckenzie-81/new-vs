@@ -823,6 +823,18 @@ export async function verifyAuditLog(): Promise<AuditChainVerification> {
   return response.json();
 }
 
+export interface DeviceSignal {
+  deviceId: string;
+  distinctVoters: number;
+  credentialCount: number;
+}
+
+export async function getDeviceSignals(electionId: string): Promise<DeviceSignal[]> {
+  const response = await apiFetch(`/api/elections/${electionId}/device-signals`);
+  const body = await response.json();
+  return body.devices;
+}
+
 // uploadFile gets a presigned URL from our backend, then PUTs the file
 // straight to R2 with a plain fetch (no credentials, no API base URL -
 // it's a different origin entirely) so the file itself never passes

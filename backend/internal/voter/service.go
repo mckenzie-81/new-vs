@@ -77,6 +77,17 @@ func generateVoterToken() (rawToken, tokenHash string, err error) {
 	return rawToken, hashVoterToken(rawToken), nil
 }
 
+// GenerateDeviceID is an opaque, non-secret identifier for the cookie that
+// binds a browser to the voters it authenticates as - exported so the
+// handler can mint one without reaching into crypto/rand itself.
+func GenerateDeviceID() (string, error) {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
+}
+
 func hashVoterToken(rawToken string) string {
 	sum := sha256.Sum256([]byte(rawToken))
 	return hex.EncodeToString(sum[:])
@@ -227,7 +238,10 @@ func (s *Service) GetTokenStatus(ctx context.Context, rawToken string) (*TokenSt
 // which field was wrong. A wrong attempt counts toward the lockout
 // threshold even though the overall call fails; success flips the
 // credential to AUTHENTICATED, which is what GetBallot/CastVote check for.
-func (s *Service) AuthenticateVoter(ctx context.Context, rawToken string, verification map[string]string, ip, userAgent string) (time.Time, error) {
+//
+// deviceID is recorded on every attempt, successful or not - it's purely
+// observational (see DeviceSignals) and never changes the outcome here.
+func (s *Service) AuthenticateVoter(ctx context.Context, rawToken string, verification map[string]string, ip, userAgent, deviceID string) (time.Time, error) {
 	if rawToken == "" {
 		return time.Time{}, ErrInvalidOrExpiredToken
 	}
@@ -316,13 +330,13 @@ func (s *Service) AuthenticateVoter(ctx context.Context, rawToken string, verifi
 			action = "VOTER_CREDENTIAL_LOCKED"
 		}
 		if _, err := tx.Exec(ctx, `
-			UPDATE voter_credentials SET failed_attempts = $1, status = $2, updated_at = now() WHERE id = $3
-		`, failedAttempts, newStatus, credentialID); err != nil {
+			UPDATE voter_credentials SET failed_attempts = $1, status = $2, device_id = $3, updated_at = now() WHERE id = $4
+		`, failedAttempts, newStatus, deviceID, credentialID); err != nil {
 			return time.Time{}, fmt.Errorf("recording failed attempt: %w", err)
 		}
 		if err := audit.Log(ctx, tx, audit.Entry{
 			Action:    action,
-			Metadata:  map[string]any{"election_id": electionID, "electorate_voter_id": electorateVoterID, "email": email},
+			Metadata:  map[string]any{"election_id": electionID, "electorate_voter_id": electorateVoterID, "email": email, "device_id": deviceID},
 			IPAddress: ip,
 			UserAgent: userAgent,
 		}); err != nil {
@@ -338,14 +352,14 @@ func (s *Service) AuthenticateVoter(ctx context.Context, rawToken string, verifi
 	}
 
 	if _, err := tx.Exec(ctx, `
-		UPDATE voter_credentials SET status = 'AUTHENTICATED', authenticated_at = now(), failed_attempts = 0, updated_at = now()
-		WHERE id = $1
-	`, credentialID); err != nil {
+		UPDATE voter_credentials SET status = 'AUTHENTICATED', authenticated_at = now(), failed_attempts = 0, device_id = $1, updated_at = now()
+		WHERE id = $2
+	`, deviceID, credentialID); err != nil {
 		return time.Time{}, fmt.Errorf("marking credential authenticated: %w", err)
 	}
 	if err := audit.Log(ctx, tx, audit.Entry{
 		Action:    "VOTER_AUTHENTICATED",
-		Metadata:  map[string]any{"election_id": electionID, "electorate_voter_id": electorateVoterID, "email": email},
+		Metadata:  map[string]any{"election_id": electionID, "electorate_voter_id": electorateVoterID, "email": email, "device_id": deviceID},
 		IPAddress: ip,
 		UserAgent: userAgent,
 	}); err != nil {
@@ -357,6 +371,53 @@ func (s *Service) AuthenticateVoter(ctx context.Context, rawToken string, verifi
 	}
 
 	return expiresAt, nil
+}
+
+// DeviceSignal is one browser that has authenticated as more than one
+// distinct voter in an election - the one device, many voters pattern
+// that's the real vote-buying/coercion signal, as opposed to a shared lab
+// or polling-station computer legitimately seeing a handful of voters
+// over a whole election. This is deliberately informational only: there
+// is no "flagged" verdict, just the count, because only an admin who
+// knows whether their electorate votes from shared devices can judge
+// whether a given count is normal for them.
+type DeviceSignal struct {
+	DeviceID        string `json:"deviceId"`
+	DistinctVoters  int    `json:"distinctVoters"`
+	CredentialCount int    `json:"credentialCount"`
+}
+
+// DeviceSignals never looks at votes or credential_hash - it only reads
+// voter_credentials, so it can never reveal how any of those voters cast
+// their ballot, only that they authenticated from the same browser.
+func (s *Service) DeviceSignals(ctx context.Context, electionID string) ([]DeviceSignal, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT device_id, count(DISTINCT electorate_voter_id), count(*)
+		FROM voter_credentials
+		WHERE election_id = $1 AND device_id IS NOT NULL
+		GROUP BY device_id
+		HAVING count(DISTINCT electorate_voter_id) > 1
+		ORDER BY count(DISTINCT electorate_voter_id) DESC
+		LIMIT 50
+	`, electionID)
+	if err != nil {
+		return nil, fmt.Errorf("querying device signals: %w", err)
+	}
+	defer rows.Close()
+
+	signals := []DeviceSignal{}
+	for rows.Next() {
+		var sig DeviceSignal
+		if err := rows.Scan(&sig.DeviceID, &sig.DistinctVoters, &sig.CredentialCount); err != nil {
+			return nil, fmt.Errorf("scanning device signal: %w", err)
+		}
+		signals = append(signals, sig)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating device signals: %w", err)
+	}
+
+	return signals, nil
 }
 
 type BallotResult struct {

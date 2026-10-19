@@ -43,6 +43,7 @@ func NewHandler(service *Service, electionService *election.Service, authService
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/elections/{electionId}/voter-credentials/issue", h.issueCredentials)
 	mux.HandleFunc("GET /api/elections/{id}/results", h.getResults)
+	mux.HandleFunc("GET /api/elections/{id}/device-signals", h.getDeviceSignals)
 	mux.HandleFunc("GET /api/vote/{token}", h.getTokenStatus)
 	mux.HandleFunc("POST /api/vote/{token}/authenticate", h.authenticate)
 	mux.HandleFunc("GET /api/vote/ballot", h.getBallot)
@@ -129,6 +130,21 @@ func (h *Handler) getResults(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *Handler) getDeviceSignals(w http.ResponseWriter, r *http.Request) {
+	if _, err := h.authService.Authorize(w, r, dashboardRoles...); err != nil {
+		httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	signals, err := h.service.DeviceSignals(r.Context(), r.PathValue("id"))
+	if err != nil {
+		log.Printf("getting device signals failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to get device signals")
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"devices": signals})
+}
+
 func (h *Handler) getTokenStatus(w http.ResponseWriter, r *http.Request) {
 	status, err := h.service.GetTokenStatus(r.Context(), r.PathValue("token"))
 	if err != nil {
@@ -148,7 +164,14 @@ func (h *Handler) authenticate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expiresAt, err := h.service.AuthenticateVoter(r.Context(), token, req, httpx.ClientIP(r), r.Header.Get("User-Agent"))
+	deviceID, err := getOrSetDeviceID(w, r, h.cookieSecure)
+	if err != nil {
+		log.Printf("generating device id failed: %v", err)
+		httpx.Error(w, http.StatusInternalServerError, "failed to authenticate")
+		return
+	}
+
+	expiresAt, err := h.service.AuthenticateVoter(r.Context(), token, req, httpx.ClientIP(r), r.Header.Get("User-Agent"), deviceID)
 	switch {
 	case err == nil:
 		status, statusErr := h.service.GetTokenStatus(r.Context(), token)
@@ -280,6 +303,35 @@ func readVoterCookie(r *http.Request, electionID string) string {
 		return ""
 	}
 	return cookie.Value
+}
+
+const deviceCookieName = "device_id"
+const deviceCookieMaxAge = 400 * 24 * 60 * 60 // ~400 days, the longest Chrome/Safari will honor
+
+// getOrSetDeviceID reads the long-lived device-binding cookie, minting and
+// setting one on the response if this browser has never authenticated a
+// voter before. Not HttpOnly-exempt or signed - it's an opaque identifier
+// with no authority of its own (see Service.DeviceSignals), not a secret,
+// so there's nothing to protect beyond the usual cookie handling.
+func getOrSetDeviceID(w http.ResponseWriter, r *http.Request, secure bool) (string, error) {
+	if cookie, err := r.Cookie(deviceCookieName); err == nil && cookie.Value != "" {
+		return cookie.Value, nil
+	}
+
+	deviceID, err := GenerateDeviceID()
+	if err != nil {
+		return "", err
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     deviceCookieName,
+		Value:    deviceID,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   deviceCookieMaxAge,
+	})
+	return deviceID, nil
 }
 
 func (h *Handler) logAudit(ctx context.Context, entry audit.Entry) {

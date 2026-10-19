@@ -7,9 +7,11 @@ import {
   issueVoterCredentials,
   updateElection,
   electionToCreateInput,
+  getDeviceSignals,
   ApiError,
   ElectorateSummary,
   IssueVoterCredentialsResult,
+  DeviceSignal,
 } from "@/lib/api";
 import { useDashboardUser } from "@/components/dashboard/user-context";
 import { useElection } from "@/components/dashboard/election-context";
@@ -25,6 +27,7 @@ export default function ElectionElectoratePage() {
   const [issuing, setIssuing] = useState(false);
   const [issueError, setIssueError] = useState<string | null>(null);
   const [issueResult, setIssueResult] = useState<IssueVoterCredentialsResult | null>(null);
+  const [deviceSignals, setDeviceSignals] = useState<DeviceSignal[] | null>(null);
 
   const [editing, setEditing] = useState(false);
   const [electorateDatabaseId, setElectorateDatabaseId] = useState(
@@ -46,6 +49,15 @@ export default function ElectionElectoratePage() {
   }
 
   useEffect(refreshSummary, [election.id]);
+
+  const showDeviceSignals = election.status === "LIVE" || election.status === "CLOSED" || election.status === "ARCHIVED";
+
+  useEffect(() => {
+    if (!showDeviceSignals) return;
+    getDeviceSignals(election.id)
+      .then(setDeviceSignals)
+      .catch(() => setDeviceSignals([]));
+  }, [election.id, showDeviceSignals]);
 
   async function handleIssue() {
     setIssuing(true);
@@ -250,6 +262,31 @@ export default function ElectionElectoratePage() {
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {showDeviceSignals && deviceSignals && deviceSignals.length > 0 && (
+            <div className="mt-8 border-t border-line pt-6">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                Device activity
+              </p>
+              <p className="mt-1 text-sm text-ink-muted">
+                Browsers that have authenticated as more than one voter. This is informational,
+                not proof of anything on its own - a shared lab or polling-station computer will
+                show up here too. Nothing above is ever blocked.
+              </p>
+              <ul className="mt-3 divide-y divide-line border-t border-line">
+                {deviceSignals.map((d) => (
+                  <li key={d.deviceId} className="flex items-baseline justify-between gap-4 py-2">
+                    <span className="font-mono text-xs text-ink-faint">
+                      {d.deviceId.slice(0, 12)}...
+                    </span>
+                    <span className="text-sm text-ink-muted">
+                      {d.distinctVoters} distinct voters · {d.credentialCount} attempts
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </div>
