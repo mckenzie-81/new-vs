@@ -375,6 +375,9 @@ func (h *Handler) createPortfolio(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, ErrInvalidInput):
 		httpx.Error(w, http.StatusBadRequest, err.Error())
 
+	case errors.Is(err, ErrDuplicatePortfolio):
+		httpx.Error(w, http.StatusConflict, err.Error())
+
 	default:
 		log.Printf("creating portfolio failed: %v", err)
 		httpx.Error(w, http.StatusInternalServerError, "failed to create portfolio")
@@ -505,6 +508,9 @@ func (h *Handler) createCandidate(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, ErrInvalidInput):
 		httpx.Error(w, http.StatusBadRequest, err.Error())
 
+	case errors.Is(err, ErrDuplicateCandidate):
+		httpx.Error(w, http.StatusConflict, err.Error())
+
 	default:
 		log.Printf("creating candidate failed: %v", err)
 		httpx.Error(w, http.StatusInternalServerError, "failed to create candidate")
@@ -553,6 +559,9 @@ func (h *Handler) updateCandidate(w http.ResponseWriter, r *http.Request) {
 
 	case errors.Is(err, ErrInvalidInput):
 		httpx.Error(w, http.StatusBadRequest, err.Error())
+
+	case errors.Is(err, ErrDuplicateCandidate):
+		httpx.Error(w, http.StatusConflict, err.Error())
 
 	default:
 		log.Printf("updating candidate failed: %v", err)

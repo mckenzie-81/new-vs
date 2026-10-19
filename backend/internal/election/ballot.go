@@ -11,8 +11,10 @@ import (
 )
 
 var (
-	ErrElectionNotDraft = errors.New("the ballot can only be edited while the election is a draft")
-	ErrUnknownOrderItem = errors.New("one of the items doesn't belong here")
+	ErrElectionNotDraft   = errors.New("the ballot can only be edited while the election is a draft")
+	ErrUnknownOrderItem   = errors.New("one of the items doesn't belong here")
+	ErrDuplicatePortfolio = errors.New("a portfolio with this title already exists in this election")
+	ErrDuplicateCandidate = errors.New("a candidate with this name already exists under this portfolio")
 )
 
 const maxPhotoURLLength = 2048
@@ -91,6 +93,16 @@ func (s *Service) CreatePortfolio(ctx context.Context, electionID, title, descri
 	var desc *string
 	if trimmed := strings.TrimSpace(description); trimmed != "" {
 		desc = &trimmed
+	}
+
+	var duplicate bool
+	if err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM portfolios WHERE election_id = $1 AND lower(title) = lower($2))
+	`, electionID, title).Scan(&duplicate); err != nil {
+		return nil, fmt.Errorf("checking for duplicate portfolio: %w", err)
+	}
+	if duplicate {
+		return nil, ErrDuplicatePortfolio
 	}
 
 	p := Portfolio{ElectionID: electionID, Candidates: []Candidate{}}
@@ -221,6 +233,29 @@ func (s *Service) portfolioRunningMateRequired(ctx context.Context, electionID, 
 	return required, nil
 }
 
+// noExclusion is never a real candidate id - passed to
+// duplicateCandidateName by CreateCandidate, where every existing
+// candidate under the portfolio is a genuine potential duplicate, unlike
+// UpdateCandidate which must exclude the candidate's own row.
+const noExclusion = "00000000-0000-0000-0000-000000000000"
+
+// duplicateCandidateName reports whether another candidate under the same
+// portfolio already has this name - excludeID lets UpdateCandidate check
+// against everyone else without tripping over the candidate's own
+// unchanged name.
+func (s *Service) duplicateCandidateName(ctx context.Context, portfolioID, fullName, excludeID string) (bool, error) {
+	var duplicate bool
+	if err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM candidates
+			WHERE portfolio_id = $1 AND lower(full_name) = lower($2) AND id != $3
+		)
+	`, portfolioID, fullName, excludeID).Scan(&duplicate); err != nil {
+		return false, fmt.Errorf("checking for duplicate candidate: %w", err)
+	}
+	return duplicate, nil
+}
+
 func (s *Service) CreateCandidate(ctx context.Context, electionID, portfolioID, fullName, photoURL string, runningMates []string) (*Candidate, error) {
 	if err := s.requireDraft(ctx, electionID); err != nil {
 		return nil, err
@@ -233,6 +268,14 @@ func (s *Service) CreateCandidate(ctx context.Context, electionID, portfolioID, 
 	fullName, photoURLVal, mates, err := validateCandidateInput(fullName, photoURL, runningMates, runningMateRequired)
 	if err != nil {
 		return nil, err
+	}
+
+	duplicate, err := s.duplicateCandidateName(ctx, portfolioID, fullName, noExclusion)
+	if err != nil {
+		return nil, err
+	}
+	if duplicate {
+		return nil, ErrDuplicateCandidate
 	}
 
 	c := Candidate{PortfolioID: portfolioID}
@@ -268,6 +311,14 @@ func (s *Service) UpdateCandidate(ctx context.Context, electionID, portfolioID, 
 	fullName, photoURLVal, mates, err := validateCandidateInput(fullName, photoURL, runningMates, runningMateRequired)
 	if err != nil {
 		return nil, err
+	}
+
+	duplicate, err := s.duplicateCandidateName(ctx, portfolioID, fullName, candidateID)
+	if err != nil {
+		return nil, err
+	}
+	if duplicate {
+		return nil, ErrDuplicateCandidate
 	}
 
 	c := Candidate{ID: candidateID, PortfolioID: portfolioID}
