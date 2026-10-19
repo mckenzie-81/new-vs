@@ -17,17 +17,19 @@ import (
 )
 
 type Handler struct {
-	pool        *pgxpool.Pool
-	authService *auth.Service
+	pool           *pgxpool.Pool
+	authService    *auth.Service
+	checkpointPath string
 }
 
-func NewHandler(pool *pgxpool.Pool, authService *auth.Service) *Handler {
-	return &Handler{pool: pool, authService: authService}
+func NewHandler(pool *pgxpool.Pool, authService *auth.Service, checkpointPath string) *Handler {
+	return &Handler{pool: pool, authService: authService, checkpointPath: checkpointPath}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/audit-log", h.list)
 	mux.HandleFunc("GET /api/audit-log/verify", h.verify)
+	mux.HandleFunc("GET /api/audit-log/checkpoints", h.checkpoints)
 }
 
 const defaultLimit = 50
@@ -107,9 +109,20 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 type verifyResponse struct {
-	Ok          bool   `json:"ok"`
-	Entries     int    `json:"entries"`
+	Ok      bool `json:"ok"`
+	Entries int  `json:"entries"`
+	// BrokenAtSeq is set when the chain itself is internally
+	// inconsistent - the strongest possible finding, since even a
+	// careful rewrite can't produce this.
 	BrokenAtSeq *int64 `json:"brokenAtSeq,omitempty"`
+	// CheckpointsOk and CheckpointMismatchAtSeq come from cross-checking
+	// the external anchor file: a rewrite thorough enough to keep the
+	// chain internally consistent (so BrokenAtSeq stays nil) still can't
+	// also go back and edit a checkpoint already written outside
+	// Postgres, so it shows up here instead.
+	CheckpointsOk           bool   `json:"checkpointsOk"`
+	CheckpointMismatchAtSeq *int64 `json:"checkpointMismatchAtSeq,omitempty"`
+	CheckpointsChecked      int    `json:"checkpointsChecked"`
 }
 
 // verify re-walks and recomputes the entire chain on demand - an admin
@@ -127,5 +140,37 @@ func (h *Handler) verify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.JSON(w, http.StatusOK, verifyResponse{Ok: ok, Entries: entries, BrokenAtSeq: brokenAtSeq})
+	checkpointsOk, mismatchAtSeq, checked, err := audit.VerifyAgainstCheckpoints(r.Context(), h.pool, h.checkpointPath)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "failed to verify audit log checkpoints")
+		return
+	}
+
+	httpx.JSON(w, http.StatusOK, verifyResponse{
+		Ok:                      ok,
+		Entries:                 entries,
+		BrokenAtSeq:             brokenAtSeq,
+		CheckpointsOk:           checkpointsOk,
+		CheckpointMismatchAtSeq: mismatchAtSeq,
+		CheckpointsChecked:      checked,
+	})
+}
+
+// checkpoints lists every checkpoint ever taken, so an admin can see the
+// anchor history directly - and, if they want real protection beyond
+// this server's own disk, copy it somewhere further out of reach
+// themselves (their own notes, a separate repo, email to themselves).
+func (h *Handler) checkpoints(w http.ResponseWriter, r *http.Request) {
+	if _, err := h.authService.Authorize(w, r, "SYSTEMADMIN"); err != nil {
+		httpx.Error(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	checkpoints, err := audit.ReadCheckpoints(h.checkpointPath)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "failed to read checkpoints")
+		return
+	}
+
+	httpx.JSON(w, http.StatusOK, map[string]any{"checkpoints": checkpoints})
 }

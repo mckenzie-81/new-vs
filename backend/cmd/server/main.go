@@ -4,7 +4,9 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"time"
 
+	"backend/internal/audit"
 	"backend/internal/auditlog"
 	"backend/internal/auth"
 	"backend/internal/bootstrap"
@@ -17,7 +19,35 @@ import (
 	"backend/internal/pulse"
 	"backend/internal/storage"
 	"backend/internal/voter"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+const auditCheckpointInterval = 5 * time.Minute
+
+// runAuditCheckpoints anchors the audit chain's head outside Postgres on
+// a timer - see internal/audit's package doc for why VerifyChain alone,
+// with no anchor, can't catch a sufficiently thorough database rewrite.
+// Runs for the life of the process; errors are logged, never fatal - a
+// missed checkpoint just means a slightly longer gap an attacker's
+// rewrite could hide inside, not a reason to take the server down.
+func runAuditCheckpoints(ctx context.Context, pool *pgxpool.Pool, path string) {
+	if cp, err := audit.WriteCheckpoint(ctx, pool, path); err != nil {
+		log.Printf("audit checkpoint failed: %v", err)
+	} else if cp != nil {
+		log.Printf("audit checkpoint: seq=%d", cp.Seq)
+	}
+
+	ticker := time.NewTicker(auditCheckpointInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		if cp, err := audit.WriteCheckpoint(ctx, pool, path); err != nil {
+			log.Printf("audit checkpoint failed: %v", err)
+		} else if cp != nil {
+			log.Printf("audit checkpoint: seq=%d", cp.Seq)
+		}
+	}
+}
 
 func main() {
 	cfg, err := config.Load()
@@ -64,7 +94,8 @@ func main() {
 		log.Printf("uploads disabled: R2 isn't configured (set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_BASE_URL)")
 	}
 
-	auditLogHandler := auditlog.NewHandler(pool, authService)
+	auditLogHandler := auditlog.NewHandler(pool, authService, cfg.AuditCheckpointPath)
+	go runAuditCheckpoints(ctx, pool, cfg.AuditCheckpointPath)
 
 	mux := http.NewServeMux()
 	bootstrapHandler.Register(mux)

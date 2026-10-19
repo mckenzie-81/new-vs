@@ -816,11 +816,27 @@ export interface AuditChainVerification {
   ok: boolean;
   entries: number;
   brokenAtSeq?: number;
+  checkpointsOk: boolean;
+  checkpointMismatchAtSeq?: number;
+  checkpointsChecked: number;
 }
 
 export async function verifyAuditLog(): Promise<AuditChainVerification> {
   const response = await apiFetch("/api/audit-log/verify");
   return response.json();
+}
+
+export interface AuditCheckpoint {
+  seq: number;
+  entryHash: string;
+  createdAt: string;
+  checkpointedAt: string;
+}
+
+export async function getAuditCheckpoints(): Promise<AuditCheckpoint[]> {
+  const response = await apiFetch("/api/audit-log/checkpoints");
+  const body = await response.json();
+  return body.checkpoints;
 }
 
 export interface DeviceSignal {

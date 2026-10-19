@@ -22,6 +22,11 @@ type Config struct {
 	R2SecretKey     string
 	R2Bucket        string
 	R2PublicBaseURL string
+
+	// AuditCheckpointPath is a local file the audit chain's head hash gets
+	// appended to on a timer, outside Postgres entirely - see
+	// internal/audit's package doc for why that matters.
+	AuditCheckpointPath string
 }
 
 func Load() (*Config, error) {
@@ -35,6 +40,8 @@ func Load() (*Config, error) {
 		R2SecretKey:     os.Getenv("R2_SECRET_ACCESS_KEY"),
 		R2Bucket:        os.Getenv("R2_BUCKET"),
 		R2PublicBaseURL: strings.TrimRight(os.Getenv("R2_PUBLIC_BASE_URL"), "/"),
+
+		AuditCheckpointPath: os.Getenv("AUDIT_CHECKPOINT_PATH"),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -50,6 +57,9 @@ func Load() (*Config, error) {
 		cfg.AppBaseURL = "http://localhost:3000"
 	}
 	cfg.CookieSecure = strings.HasPrefix(cfg.AppBaseURL, "https://")
+	if cfg.AuditCheckpointPath == "" {
+		cfg.AuditCheckpointPath = "./audit-checkpoints.log"
+	}
 
 	return cfg, nil
 }

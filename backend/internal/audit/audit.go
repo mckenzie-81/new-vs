@@ -6,6 +6,20 @@
 // write access, not just through this application. VerifyChain re-walks
 // the whole table and reports the first point, if any, where that no
 // longer holds.
+//
+// VerifyChain alone has a real limit, though: it only checks that the
+// chain is internally self-consistent. Someone with full database write
+// access, who understands this scheme, could rewrite a past entry *and*
+// recompute every hash after it to keep the chain consistent -
+// VerifyChain would report that forged history as perfectly valid,
+// because by its own rules it is. A hash chain only proves "nothing
+// changed since X" if X is anchored somewhere that attacker doesn't also
+// control. checkpoint.go is that anchor: it periodically appends the
+// current chain head to a local file outside Postgres entirely, and
+// VerifyAgainstCheckpoints cross-checks old checkpoints against what the
+// database says today - a later rewrite changes the database's answer
+// but can't reach back and silently edit a line already written to that
+// file.
 package audit
 
 import (

@@ -4,8 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import {
   listAuditLog,
   verifyAuditLog,
+  getAuditCheckpoints,
   AuditLogEntry,
   AuditChainVerification,
+  AuditCheckpoint,
   ApiError,
 } from "@/lib/api";
 import { AdminHeader } from "@/components/dashboard/admin-header";
@@ -55,6 +57,8 @@ const actionLabel: Record<string, string> = {
   VOTER_CREDENTIAL_LOCKED: "Voter credential locked",
   VOTER_VERIFICATION_FAILED: "Voter verification failed",
   VOTER_AUTHENTICATED: "Voter authenticated",
+  VOTER_DEVICE_BLOCKED: "Voter blocked from a second device",
+  VOTER_CREDENTIAL_UNLOCKED: "Voter credential unlocked",
   VOTE_CAST: "Vote cast",
 };
 
@@ -77,6 +81,9 @@ export default function AuditLogPage() {
   const [verification, setVerification] = useState<AuditChainVerification | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [checkpoints, setCheckpoints] = useState<AuditCheckpoint[] | null>(null);
+  const [checkpointsError, setCheckpointsError] = useState<string | null>(null);
+  const [showCheckpoints, setShowCheckpoints] = useState(false);
 
   const load = useCallback((before?: number) => {
     const setBusy = before === undefined ? () => {} : setLoadingMore;
@@ -117,6 +124,18 @@ export default function AuditLogPage() {
     }
   }
 
+  function toggleCheckpoints() {
+    const next = !showCheckpoints;
+    setShowCheckpoints(next);
+    if (next && checkpoints === null) {
+      getAuditCheckpoints()
+        .then(setCheckpoints)
+        .catch((err) =>
+          setCheckpointsError(err instanceof ApiError ? err.message : "Failed to load checkpoints.")
+        );
+    }
+  }
+
   return (
     <div>
       <Breadcrumbs items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Audit log" }]} />
@@ -132,11 +151,57 @@ export default function AuditLogPage() {
 
       {verifyError && <p className="mb-6 text-sm text-danger">{verifyError}</p>}
       {verification && (
-        <p className={`mb-6 text-sm ${verification.ok ? "text-success" : "text-danger"}`}>
-          {verification.ok
-            ? `Chain intact across all ${verification.entries.toLocaleString()} entries. Nothing has been altered since it was written.`
-            : `Chain is broken at entry #${verification.brokenAtSeq} - that entry (or one before it) doesn't match what was recorded at write time.`}
-        </p>
+        <div className="mb-6 flex flex-col gap-1">
+          <p className={`text-sm ${verification.ok ? "text-success" : "text-danger"}`}>
+            {verification.ok
+              ? `Chain intact across all ${verification.entries.toLocaleString()} entries. Nothing has been altered since it was written.`
+              : `Chain is broken at entry #${verification.brokenAtSeq} - that entry (or one before it) doesn't match what was recorded at write time.`}
+          </p>
+          <p className={`text-sm ${verification.checkpointsOk ? "text-success" : "text-danger"}`}>
+            {verification.checkpointsChecked === 0
+              ? "No checkpoints taken yet - nothing external to cross-check against."
+              : verification.checkpointsOk
+                ? `Matches all ${verification.checkpointsChecked.toLocaleString()} checkpoints taken outside the database. A rewrite clever enough to pass the check above would still be caught here.`
+                : `Checkpoint mismatch at entry #${verification.checkpointMismatchAtSeq} - the database's current record of this entry no longer matches what was checkpointed outside it earlier. This is the stronger of the two checks: it catches a rewrite even if it kept the chain above internally consistent.`}
+          </p>
+          <button
+            type="button"
+            onClick={toggleCheckpoints}
+            className="mt-1 self-start text-sm text-accent hover:underline"
+          >
+            {showCheckpoints ? "Hide checkpoint history" : "View checkpoint history"}
+          </button>
+          {showCheckpoints && (
+            <div className="mt-2">
+              {checkpointsError && <p className="text-sm text-danger">{checkpointsError}</p>}
+              {!checkpointsError && checkpoints === null && (
+                <p className="text-sm text-ink-faint">Loading...</p>
+              )}
+              {checkpoints && checkpoints.length === 0 && (
+                <p className="text-sm text-ink-faint">
+                  None yet - the server takes one automatically every few minutes.
+                </p>
+              )}
+              {checkpoints && checkpoints.length > 0 && (
+                <ul className="max-h-64 overflow-y-auto divide-y divide-line border-t border-line">
+                  {checkpoints
+                    .slice()
+                    .reverse()
+                    .map((cp) => (
+                      <li key={cp.checkpointedAt} className="flex items-baseline justify-between gap-4 py-1.5">
+                        <span className="font-mono text-xs text-ink-faint">
+                          #{cp.seq} · {cp.entryHash.slice(0, 16)}...
+                        </span>
+                        <span className="shrink-0 text-xs text-ink-faint">
+                          {new Date(cp.checkpointedAt).toLocaleString()}
+                        </span>
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {error && <p className="text-sm text-danger">{error}</p>}
