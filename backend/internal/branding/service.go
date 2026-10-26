@@ -22,11 +22,13 @@ import (
 )
 
 var (
-	ErrInvalidAccentColor = errors.New("accent color must be a hex color like #2e4e8f with enough contrast for white button text")
-	ErrInvalidLogoURL     = errors.New("logo URL is too long")
+	ErrInvalidAccentColor  = errors.New("accent color must be a hex color like #2e4e8f with enough contrast for white button text")
+	ErrInvalidLogoURL      = errors.New("logo URL is too long")
+	ErrInvalidPlatformName = errors.New("platform name is too long")
 )
 
 const maxLogoURLLength = 2048
+const maxPlatformNameLength = 60
 
 // minContrastRatio is the WCAG AA threshold for normal text - the accent
 // color is always used as a background with white text on top (see
@@ -39,6 +41,7 @@ type Settings struct {
 	AccentColorSecondary *string   `json:"accentColorSecondary"`
 	AccentColorTertiary  *string   `json:"accentColorTertiary"`
 	LogoURL              *string   `json:"logoUrl"`
+	PlatformName         *string   `json:"platformName"`
 	UpdatedAt            time.Time `json:"updatedAt"`
 }
 
@@ -53,11 +56,11 @@ func NewService(pool *pgxpool.Pool) *Service {
 func (s *Service) Get(ctx context.Context) (*Settings, error) {
 	var settings Settings
 	if err := s.pool.QueryRow(ctx, `
-		SELECT accent_color, accent_color_secondary, accent_color_tertiary, logo_url, updated_at
+		SELECT accent_color, accent_color_secondary, accent_color_tertiary, logo_url, platform_name, updated_at
 		FROM system_settings WHERE id = true
 	`).Scan(
 		&settings.AccentColor, &settings.AccentColorSecondary, &settings.AccentColorTertiary,
-		&settings.LogoURL, &settings.UpdatedAt,
+		&settings.LogoURL, &settings.PlatformName, &settings.UpdatedAt,
 	); err != nil {
 		return nil, fmt.Errorf("getting system settings: %w", err)
 	}
@@ -70,7 +73,7 @@ func (s *Service) Get(ctx context.Context) (*Settings, error) {
 // electorate database link. The secondary and tertiary shades are each
 // independently optional - a brand might only have one color decided and
 // that's fine, it just means those slots inherit nothing special.
-func (s *Service) Update(ctx context.Context, accentColor, accentColorSecondary, accentColorTertiary, logoURL string) (*Settings, error) {
+func (s *Service) Update(ctx context.Context, accentColor, accentColorSecondary, accentColorTertiary, logoURL, platformName string) (*Settings, error) {
 	accent, err := normalizeOptionalColor(accentColor, ValidateAccentColor)
 	if err != nil {
 		return nil, err
@@ -92,16 +95,24 @@ func (s *Service) Update(ctx context.Context, accentColor, accentColorSecondary,
 		logo = &trimmed
 	}
 
+	var name *string
+	if trimmed := strings.TrimSpace(platformName); trimmed != "" {
+		if len(trimmed) > maxPlatformNameLength {
+			return nil, ErrInvalidPlatformName
+		}
+		name = &trimmed
+	}
+
 	var settings Settings
 	if err := s.pool.QueryRow(ctx, `
 		UPDATE system_settings SET
 			accent_color = $1, accent_color_secondary = $2, accent_color_tertiary = $3,
-			logo_url = $4, updated_at = now()
+			logo_url = $4, platform_name = $5, updated_at = now()
 		WHERE id = true
-		RETURNING accent_color, accent_color_secondary, accent_color_tertiary, logo_url, updated_at
-	`, accent, secondary, tertiary, logo).Scan(
+		RETURNING accent_color, accent_color_secondary, accent_color_tertiary, logo_url, platform_name, updated_at
+	`, accent, secondary, tertiary, logo, name).Scan(
 		&settings.AccentColor, &settings.AccentColorSecondary, &settings.AccentColorTertiary,
-		&settings.LogoURL, &settings.UpdatedAt,
+		&settings.LogoURL, &settings.PlatformName, &settings.UpdatedAt,
 	); err != nil {
 		return nil, fmt.Errorf("updating system settings: %w", err)
 	}

@@ -3,9 +3,12 @@
 import { useEffect, useState } from "react";
 import { getBranding, updateBranding, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { BrandingFields } from "@/components/branding/branding-fields";
 
 export default function SettingsPage() {
+  const [platformName, setPlatformName] = useState("");
   const [accentColor, setAccentColor] = useState("");
   const [accentColorSecondary, setAccentColorSecondary] = useState("");
   const [accentColorTertiary, setAccentColorTertiary] = useState("");
@@ -18,6 +21,7 @@ export default function SettingsPage() {
   useEffect(() => {
     getBranding()
       .then((settings) => {
+        setPlatformName(settings.platformName ?? "");
         setAccentColor(settings.accentColor ?? "");
         setAccentColorSecondary(settings.accentColorSecondary ?? "");
         setAccentColorTertiary(settings.accentColorTertiary ?? "");
@@ -37,8 +41,10 @@ export default function SettingsPage() {
         accentColor,
         accentColorSecondary,
         accentColorTertiary,
-        logoUrl
+        logoUrl,
+        platformName
       );
+      setPlatformName(settings.platformName ?? "");
       setAccentColor(settings.accentColor ?? "");
       setAccentColorSecondary(settings.accentColorSecondary ?? "");
       setAccentColorTertiary(settings.accentColorTertiary ?? "");
@@ -63,6 +69,19 @@ export default function SettingsPage() {
         <p className="py-10 text-sm text-ink-faint">Loading...</p>
       ) : (
         <form onSubmit={handleSave} className="mt-5 flex flex-col gap-4">
+          <Field
+            label="Platform name"
+            htmlFor="platform-name"
+            hint="Shown at the top of the dashboard sidebar. Leave blank for the default, &quot;Voting System&quot;."
+          >
+            <Input
+              id="platform-name"
+              placeholder="Voting System"
+              value={platformName}
+              onChange={(e) => setPlatformName(e.target.value)}
+            />
+          </Field>
+
           <BrandingFields
             accentColor={accentColor}
             accentColorSecondary={accentColorSecondary}

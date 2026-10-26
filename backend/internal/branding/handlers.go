@@ -43,6 +43,7 @@ type updateRequest struct {
 	AccentColorSecondary string `json:"accentColorSecondary"`
 	AccentColorTertiary  string `json:"accentColorTertiary"`
 	LogoURL              string `json:"logoUrl"`
+	PlatformName         string `json:"platformName"`
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
@@ -62,12 +63,12 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settings, err := h.service.Update(r.Context(), req.AccentColor, req.AccentColorSecondary, req.AccentColorTertiary, req.LogoURL)
+	settings, err := h.service.Update(r.Context(), req.AccentColor, req.AccentColorSecondary, req.AccentColorTertiary, req.LogoURL, req.PlatformName)
 	switch {
 	case err == nil:
 		httpx.JSON(w, http.StatusOK, settings)
 
-	case errors.Is(err, ErrInvalidAccentColor), errors.Is(err, ErrInvalidLogoURL):
+	case errors.Is(err, ErrInvalidAccentColor), errors.Is(err, ErrInvalidLogoURL), errors.Is(err, ErrInvalidPlatformName):
 		httpx.Error(w, http.StatusBadRequest, err.Error())
 
 	default:

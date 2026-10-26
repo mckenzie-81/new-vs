@@ -12,11 +12,11 @@ function isActive(pathname: string, href: string) {
   return pathname.startsWith(href);
 }
 
-function Brand() {
+function Brand({ platformName }: { platformName?: string | null }) {
   return (
     <div className="px-6 pb-8 pt-7">
       <span className="text-sm font-bold uppercase tracking-wide text-white">
-        Voting System
+        {platformName || "Voting System"}
       </span>
       <span aria-hidden="true" className="mt-2 block h-px w-8 bg-accent-tertiary" />
     </div>
@@ -126,10 +126,10 @@ export function SidebarContent({
   );
 }
 
-export function Sidebar({ role }: { role: string }) {
+export function Sidebar({ role, platformName }: { role: string; platformName?: string | null }) {
   return (
     <aside className="hidden w-60 shrink-0 flex-col bg-accent md:flex">
-      <Brand />
+      <Brand platformName={platformName} />
       <div className="flex-1 overflow-y-auto">
         <SidebarContent role={role} />
       </div>
@@ -139,10 +139,12 @@ export function Sidebar({ role }: { role: string }) {
 
 export function MobileSidebar({
   role,
+  platformName,
   open,
   onClose,
 }: {
   role: string;
+  platformName?: string | null;
   open: boolean;
   onClose: () => void;
 }) {
@@ -155,7 +157,7 @@ export function MobileSidebar({
       className="md:hidden"
       panelClassName="bg-accent text-white"
     >
-      <Brand />
+      <Brand platformName={platformName} />
       <div className="flex-1 overflow-y-auto">
         <SidebarContent role={role} onNavigate={onClose} />
       </div>

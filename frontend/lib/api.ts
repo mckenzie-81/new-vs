@@ -838,6 +838,7 @@ export interface BrandingSettings {
   accentColorSecondary: string | null;
   accentColorTertiary: string | null;
   logoUrl: string | null;
+  platformName: string | null;
   updatedAt: string;
 }
 
@@ -850,12 +851,19 @@ export async function updateBranding(
   accentColor: string,
   accentColorSecondary: string,
   accentColorTertiary: string,
-  logoUrl: string
+  logoUrl: string,
+  platformName: string
 ): Promise<BrandingSettings> {
   const response = await apiFetch("/api/settings/branding", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ accentColor, accentColorSecondary, accentColorTertiary, logoUrl }),
+    body: JSON.stringify({
+      accentColor,
+      accentColorSecondary,
+      accentColorTertiary,
+      logoUrl,
+      platformName,
+    }),
   });
   return response.json();
 }

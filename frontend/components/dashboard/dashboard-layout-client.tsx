@@ -17,6 +17,7 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
   const [accentColor, setAccentColor] = useState<string | null>(null);
   const [accentColorSecondary, setAccentColorSecondary] = useState<string | null>(null);
   const [accentColorTertiary, setAccentColorTertiary] = useState<string | null>(null);
+  const [platformName, setPlatformName] = useState<string | null>(null);
 
   useEffect(() => {
     getSession()
@@ -31,6 +32,7 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
         setAccentColor(settings.accentColor);
         setAccentColorSecondary(settings.accentColorSecondary);
         setAccentColorTertiary(settings.accentColorTertiary);
+        setPlatformName(settings.platformName);
       })
       .catch(() => {});
   }, [router]);
@@ -47,8 +49,13 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
         accentColorTertiary={accentColorTertiary}
       >
         <div className="flex min-h-screen bg-page">
-          <Sidebar role={user.role} />
-          <MobileSidebar role={user.role} open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
+          <Sidebar role={user.role} platformName={platformName} />
+          <MobileSidebar
+            role={user.role}
+            platformName={platformName}
+            open={mobileNavOpen}
+            onClose={() => setMobileNavOpen(false)}
+          />
 
           <div className="flex min-h-screen min-w-0 flex-1 flex-col">
             <Header user={user} onMenuClick={() => setMobileNavOpen(true)} />
