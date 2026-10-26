@@ -14,7 +14,7 @@ export function Header({
   onMenuClick: () => void;
 }) {
   return (
-    <header className="flex h-16 shrink-0 items-center gap-4 px-4 sm:px-6">
+    <header className="flex h-16 shrink-0 items-center gap-4 border-b border-line bg-surface px-4 md:px-8 lg:px-10">
       <button
         aria-label="Open menu"
         onClick={onMenuClick}

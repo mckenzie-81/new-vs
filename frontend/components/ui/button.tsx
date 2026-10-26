@@ -11,11 +11,17 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 // Tailwind's own internal generation order. The same reasoning is why
 // width is a prop (fullWidth) instead of a className override: w-full and
 // w-auto have the same footgun, and a screenshot once proved it.
+//
+// default is the brand accent color, not a neutral black - the primary
+// action on a screen should read as branded by default, same as "accent"
+// (kept as an explicit alias for call sites that already name it). A
+// flat black default was the old convention; this app's buttons are
+// meant to look like an institution's own console, not a generic one.
 const fillClasses: Record<NonNullable<ButtonProps["variant"]>, string> = {
-  default: "bg-ink",
-  accent: "bg-accent",
-  danger: "bg-danger",
-  success: "bg-success",
+  default: "bg-accent hover:bg-accent-secondary",
+  accent: "bg-accent hover:bg-accent-secondary",
+  danger: "bg-danger hover:bg-danger/90",
+  success: "bg-success hover:bg-success/90",
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
@@ -25,7 +31,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   return (
     <button
       ref={ref}
-      className={`inline-flex min-h-11 ${fullWidth ? "w-full" : ""} items-center justify-center ${fillClasses[variant]} px-5 text-sm font-semibold text-white disabled:opacity-60 disabled:cursor-not-allowed ${className}`}
+      className={`inline-flex min-h-11 ${fullWidth ? "w-full" : ""} items-center justify-center ${fillClasses[variant]} px-5 text-sm font-semibold text-white transition-colors duration-150 disabled:opacity-60 disabled:cursor-not-allowed ${className}`}
       {...props}
     />
   );
@@ -36,9 +42,8 @@ type SecondaryButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const textClasses: Record<NonNullable<SecondaryButtonProps["tone"]>, string> = {
-  // The secondary accent shade on hover, not plain ink - gives this
-  // button real brand personality while Button's primary accent stays
-  // reserved for the one most-emphasized action on a screen.
+  // The secondary brand shade on hover - a lighter touch than Button's
+  // solid accent fill, for the less-emphasized action next to it.
   default: "text-ink hover:text-accent-secondary",
   danger: "text-danger",
 };

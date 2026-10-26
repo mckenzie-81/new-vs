@@ -14,8 +14,11 @@ function isActive(pathname: string, href: string) {
 
 function Brand() {
   return (
-    <div className="p-5">
-      <span className="text-sm font-semibold text-ink">Voting System</span>
+    <div className="px-6 pb-8 pt-7">
+      <span className="text-sm font-bold uppercase tracking-wide text-white">
+        Voting System
+      </span>
+      <span aria-hidden="true" className="mt-2 block h-px w-8 bg-accent-tertiary" />
     </div>
   );
 }
@@ -50,7 +53,7 @@ export function SidebarContent({
   }
 
   return (
-    <nav className="flex flex-col gap-5 p-5">
+    <nav className="flex flex-col gap-6 px-3 pb-6">
       {sections.map((section) => {
         const isCollapsed = collapsed.has(section.title);
         return (
@@ -58,7 +61,7 @@ export function SidebarContent({
             <button
               onClick={() => toggleSection(section.title)}
               aria-expanded={!isCollapsed}
-              className="mb-1 flex w-full items-center justify-between text-xs font-semibold uppercase tracking-wide text-ink-faint transition-colors duration-150 hover:text-ink-muted"
+              className="mb-1 flex w-full items-center justify-between px-3 text-xs font-semibold uppercase tracking-wide text-white/50 transition-colors duration-150 hover:text-white/80"
             >
               {section.title}
               <ChevronDownIcon
@@ -91,13 +94,25 @@ export function SidebarContent({
                       key={item.href}
                       href={item.href}
                       onClick={onNavigate}
-                      className={`flex items-center gap-2.5 border-l-2 py-1.5 pl-3 text-sm transition-colors duration-150 ${
+                      className={`relative flex items-center gap-2.5 px-3 py-2 text-sm transition-colors duration-150 ${
                         active
-                          ? "border-ink font-semibold text-ink"
-                          : "border-transparent text-ink-muted hover:text-ink"
+                          ? "bg-accent-secondary font-semibold text-white"
+                          : "text-white/70 hover:bg-white/5 hover:text-white"
                       }`}
                     >
-                      <Icon className="h-4 w-4" strokeWidth={2} />
+                      {/* Gold marks the current page - an accent, never
+                          text, same rule the brand manual gives it
+                          everywhere else it appears. */}
+                      {active && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-y-0 left-0 w-[3px] bg-accent-tertiary"
+                        />
+                      )}
+                      <Icon
+                        className={`h-4 w-4 ${active ? "text-accent-tertiary" : "text-white/50"}`}
+                        strokeWidth={2}
+                      />
                       {item.label}
                     </Link>
                   );
@@ -113,7 +128,7 @@ export function SidebarContent({
 
 export function Sidebar({ role }: { role: string }) {
   return (
-    <aside className="hidden w-56 shrink-0 flex-col border-r border-line md:flex">
+    <aside className="hidden w-60 shrink-0 flex-col bg-accent md:flex">
       <Brand />
       <div className="flex-1 overflow-y-auto">
         <SidebarContent role={role} />
@@ -132,7 +147,14 @@ export function MobileSidebar({
   onClose: () => void;
 }) {
   return (
-    <Sheet open={open} onClose={onClose} side="left" widthClassName="w-56" className="md:hidden">
+    <Sheet
+      open={open}
+      onClose={onClose}
+      side="left"
+      widthClassName="w-60"
+      className="md:hidden"
+      panelClassName="bg-accent text-white"
+    >
       <Brand />
       <div className="flex-1 overflow-y-auto">
         <SidebarContent role={role} onNavigate={onClose} />

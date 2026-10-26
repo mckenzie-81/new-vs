@@ -7,6 +7,11 @@ export function Sheet({
   title,
   widthClassName = "w-80 max-w-[85vw]",
   className = "",
+  // A single prop for the panel's own background/text color, not appended
+  // alongside the default - two bg-* utilities in one class string aren't
+  // reliably resolved by source order (see button.tsx), so this replaces
+  // bg-surface rather than fighting it.
+  panelClassName = "bg-surface",
   children,
 }: {
   open: boolean;
@@ -15,6 +20,7 @@ export function Sheet({
   title?: string;
   widthClassName?: string;
   className?: string;
+  panelClassName?: string;
   children: React.ReactNode;
 }) {
   if (!open) return null;
@@ -31,7 +37,7 @@ export function Sheet({
         onClick={onClose}
       />
       <div
-        className={`${slideInClass} absolute top-0 flex h-full flex-col bg-surface ${widthClassName} ${sideClasses}`}
+        className={`${slideInClass} absolute top-0 flex h-full flex-col ${panelClassName} ${widthClassName} ${sideClasses}`}
       >
         {title && (
           <div className="flex items-center justify-between p-5">

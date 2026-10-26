@@ -9,6 +9,7 @@ import { ElectionRow } from "@/components/dashboard/election-row";
 import { ElectionForm } from "@/components/dashboard/election-form";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 
 export default function ElectionsPage() {
   const user = useDashboardUser();
@@ -53,11 +54,15 @@ export default function ElectionsPage() {
       )}
 
       {!error && elections !== null && elections.length > 0 && (
-        <ul className="divide-y divide-line border-t border-line">
-          {elections.map((election) => (
-            <ElectionRow key={election.id} election={election} />
-          ))}
-        </ul>
+        <Card>
+          <CardContent className="p-0">
+            <ul className="divide-y divide-line">
+              {elections.map((election) => (
+                <ElectionRow key={election.id} election={election} />
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
       )}
 
       {createOpen && (

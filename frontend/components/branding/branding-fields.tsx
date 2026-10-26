@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { ImageUpload } from "@/components/ui/image-upload";
 
-const FALLBACK_SWATCHES = ["#2e4e8f", "#1f3a66", "#6b86b8"];
+const FALLBACK_SWATCHES = ["#2f4a75", "#243a5c", "#b79a64"];
 
 function ColorField({
   id,

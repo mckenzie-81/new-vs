@@ -8,19 +8,58 @@
   --color-line: #e3e5ea;
   --color-surface: #ffffff;
   --color-page: #f4f5f7;
-  --color-accent: #2e4e8f;
-  --color-accent-soft: #2e4e8f24;
-  --color-accent-secondary: #1f3a66;
-  --color-accent-secondary-soft: #1f3a6624;
-  --color-accent-tertiary: #6b86b8;
-  --color-accent-tertiary-soft: #6b86b824;
-  --color-success: #15803d;
-  --color-success-soft: #15803d1f;
-  --color-danger: #c0392b;
-  --color-danger-soft: #c0392b1f;
-  --color-warning: #b45309;
-  --color-warning-soft: #b453091f;
-  --font-sans: var(--font-plex-sans);
+
+  /* Default brand palette: University of Ghana Brand Manual (2017),
+     section 2.5 screen values - UG Blue (Pantone 294C, #2f4a75, 8.9:1 on
+     white) as the primary, a deeper blue as the secondary (hover states -
+     UG Gold's own 2.7:1 contrast is too low to carry text, per the
+     manual's own accessibility note, so gold is reserved for the
+     tertiary slot, which this app only ever uses for decorative fills,
+     never text - see turnout-chart.tsx). Still just a default: every
+     shade here is the exact field the admin-configurable branding
+     system (ThemeScope) overrides, same as before this was UG-specific. */
+  --color-accent: #2f4a75;
+  --color-accent-soft: #2f4a7524;
+  --color-accent-secondary: #243a5c;
+  --color-accent-secondary-soft: #243a5c24;
+  --color-accent-tertiary: #b79a64;
+  --color-accent-tertiary-soft: #b79a6424;
+
+  --color-success: #1f7a4d;
+  --color-success-soft: #1f7a4d1f;
+  --color-danger: #b42318;
+  --color-danger-soft: #b423181f;
+  --color-warning: #8a5a00;
+  --color-warning-soft: #8a5a001f;
+
+  /* Helvetica Neue is the brand's mandated face (manual section 4), not
+     a web font - the manual explicitly ships it as a system stack, never
+     loaded over the network, falling back to Helvetica then Arial on
+     platforms without it. */
+  --font-sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+
+  /* Square, everywhere - "structure comes from tint blocks and space,
+     not lines," per the manual's own house-style note. rounded-full is
+     deliberately untouched (radios, dots, avatars stay circular). */
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --radius-4xl: 0;
+
+  /* Flat, everywhere - this app already uses none, kept this way on
+     purpose rather than by omission. */
+  --shadow-2xs: none;
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --shadow-2xl: none;
 }
 
 :root {
@@ -38,7 +77,7 @@
 body {
   background: var(--color-page);
   color: var(--color-ink);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-sans);
 }
 
 /* Shared enter motion for modals/sheets/dialogs - a panel that's merely

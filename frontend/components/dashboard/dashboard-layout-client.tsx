@@ -53,7 +53,9 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
           <div className="flex min-h-screen min-w-0 flex-1 flex-col">
             <Header user={user} onMenuClick={() => setMobileNavOpen(true)} />
             {user.role === "SYSTEMADMIN" && <IntegrityAlertBanner />}
-            <main className="min-w-0 flex-1 p-6">{children}</main>
+            <main className="min-w-0 flex-1 px-4 pb-10 pt-6 md:px-8 lg:px-10">
+              <div className="mx-auto max-w-6xl">{children}</div>
+            </main>
           </div>
         </div>
       </ThemeScope>

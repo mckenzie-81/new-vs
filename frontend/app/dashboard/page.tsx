@@ -1,10 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  ClipboardDocumentCheckIcon,
+  BoltIcon,
+  UsersIcon,
+  ClockIcon,
+} from "@heroicons/react/24/outline";
 import { listPeople, listElections, Person, Election } from "@/lib/api";
 import { useDashboardUser } from "@/components/dashboard/user-context";
 import { AdminHeader } from "@/components/dashboard/admin-header";
-import { StatRow } from "@/components/dashboard/stat-row";
+import { StatTiles } from "@/components/dashboard/stat-tiles";
 import { QuickActions } from "@/components/dashboard/quick-actions";
 
 export default function OverviewPage() {
@@ -28,16 +34,18 @@ export default function OverviewPage() {
         intro={`Signed in as ${user.role.toLowerCase()}.`}
       />
 
-      <StatRow
+      <StatTiles
         stats={[
           {
             label: "Elections",
             value: elections ? elections.length : "–",
+            icon: ClipboardDocumentCheckIcon,
             href: "/dashboard/elections",
           },
           {
             label: "Live now",
             value: elections ? elections.filter((e) => e.status === "LIVE").length : "–",
+            icon: BoltIcon,
             href: "/dashboard/elections",
             tone: elections && elections.some((e) => e.status === "LIVE") ? "success" : undefined,
           },
@@ -46,6 +54,7 @@ export default function OverviewPage() {
                 {
                   label: "Administrators",
                   value: people ? people.length : ("–" as const),
+                  icon: UsersIcon,
                   href: "/dashboard/administrators",
                 },
                 {
@@ -53,6 +62,7 @@ export default function OverviewPage() {
                   value: people
                     ? people.filter((p) => p.status === "PENDING_VERIFICATION").length
                     : ("–" as const),
+                  icon: ClockIcon,
                   href: "/dashboard/administrators",
                   tone:
                     people && people.some((p) => p.status === "PENDING_VERIFICATION")

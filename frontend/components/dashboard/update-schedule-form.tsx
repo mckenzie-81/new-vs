@@ -56,7 +56,7 @@ export function UpdateScheduleForm({
           type="button"
           onClick={() => setMode("end_now")}
           className={`min-h-11 flex-1 text-sm font-semibold transition-colors duration-150 ${
-            mode === "end_now" ? "bg-ink text-white" : "text-ink-muted hover:text-ink"
+            mode === "end_now" ? "bg-accent text-white" : "text-ink-muted hover:text-ink"
           }`}
         >
           End now
@@ -65,7 +65,7 @@ export function UpdateScheduleForm({
           type="button"
           onClick={() => setMode("extend")}
           className={`min-h-11 flex-1 border-l border-line text-sm font-semibold transition-colors duration-150 ${
-            mode === "extend" ? "bg-ink text-white" : "text-ink-muted hover:text-ink"
+            mode === "extend" ? "bg-accent text-white" : "text-ink-muted hover:text-ink"
           }`}
         >
           Extend
