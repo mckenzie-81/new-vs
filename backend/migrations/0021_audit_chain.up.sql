@@ -18,7 +18,11 @@ WHERE audit_log.id = sub.id;
 ALTER TABLE audit_log ALTER COLUMN seq SET NOT NULL;
 
 CREATE SEQUENCE audit_log_seq_seq OWNED BY audit_log.seq;
-SELECT setval('audit_log_seq_seq', COALESCE((SELECT max(seq) FROM audit_log), 0));
+-- Three-arg form: on an empty table there's no max(seq) to resume from,
+-- so start the sequence at 1 with is_called = false, meaning the next
+-- nextval() returns exactly 1 rather than 2. A plain setval(seq, 0)
+-- fails outright here since 0 is below the sequence's minvalue of 1.
+SELECT setval('audit_log_seq_seq', COALESCE((SELECT max(seq) FROM audit_log), 1), (SELECT max(seq) FROM audit_log) IS NOT NULL);
 ALTER TABLE audit_log ALTER COLUMN seq SET DEFAULT nextval('audit_log_seq_seq');
 
 CREATE UNIQUE INDEX idx_audit_log_seq ON audit_log(seq);
