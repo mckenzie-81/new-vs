@@ -22,19 +22,13 @@ import (
 )
 
 var (
-	ErrInvalidAccentColor  = errors.New("accent color must be a hex color like #2e4e8f with enough contrast for white button text")
+	ErrInvalidAccentColor  = errors.New("accent color must be a hex color like #2e4e8f")
 	ErrInvalidLogoURL      = errors.New("logo URL is too long")
 	ErrInvalidPlatformName = errors.New("platform name is too long")
 )
 
 const maxLogoURLLength = 2048
 const maxPlatformNameLength = 60
-
-// minContrastRatio is the WCAG AA threshold for normal text - the accent
-// color is always used as a background with white text on top (see
-// Button's accent variant), so this is the one real accessibility risk an
-// accent-only override doesn't already eliminate on its own.
-const minContrastRatio = 4.5
 
 type Settings struct {
 	AccentColor          *string   `json:"accentColor"`
