@@ -13,7 +13,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -125,66 +124,36 @@ func normalizeOptionalColor(hex string, validate func(string) (string, error)) (
 	return &normalized, nil
 }
 
-// ValidateAccentColor normalizes a hex color (lowercase, #-prefixed) and
-// rejects one that wouldn't leave white button text readable on top of
-// it. Exported so internal/election applies the exact same rule to a
+// ValidateAccentColor normalizes a hex color (lowercase, #-prefixed).
+// Exported so internal/election applies the exact same rule to a
 // per-election override instead of a second, possibly-drifting copy of
-// it. Reserved for the one primary accent shade, which is the only one
-// actually used as a white-text button background (see Button's accent
-// variant) - the secondary/tertiary shades use ValidateAccentColorFormat
-// instead, since neither ever carries white text today.
+// it. An admin can pick any color here, including one that leaves white
+// button text hard to read - that's a visual choice for them to notice
+// and change, not something the backend blocks.
 func ValidateAccentColor(hex string) (string, error) {
-	normalized, r, g, b, err := normalizeHexColor(hex)
-	if err != nil {
-		return "", err
-	}
-	if contrastAgainstWhite(r, g, b) < minContrastRatio {
-		return "", ErrInvalidAccentColor
-	}
-	return normalized, nil
+	return ValidateAccentColorFormat(hex)
 }
 
-// ValidateAccentColorFormat is the same hex normalization as
-// ValidateAccentColor, without the white-text contrast requirement - for
-// a secondary/tertiary brand shade that's only ever used as text, a
-// border, or a background with no text over it.
+// ValidateAccentColorFormat is the hex-format check shared by all three
+// accent shades.
 func ValidateAccentColorFormat(hex string) (string, error) {
-	normalized, _, _, _, err := normalizeHexColor(hex)
-	return normalized, err
-}
-
-func normalizeHexColor(hex string) (normalized string, r, g, b float64, err error) {
 	hex = strings.ToLower(strings.TrimSpace(hex))
 	if !strings.HasPrefix(hex, "#") {
 		hex = "#" + hex
 	}
 	if len(hex) != 7 {
-		return "", 0, 0, 0, ErrInvalidAccentColor
+		return "", ErrInvalidAccentColor
 	}
 
-	ri, err1 := strconv.ParseUint(hex[1:3], 16, 8)
-	gi, err2 := strconv.ParseUint(hex[3:5], 16, 8)
-	bi, err3 := strconv.ParseUint(hex[5:7], 16, 8)
-	if err1 != nil || err2 != nil || err3 != nil {
-		return "", 0, 0, 0, ErrInvalidAccentColor
+	if _, err := strconv.ParseUint(hex[1:3], 16, 8); err != nil {
+		return "", ErrInvalidAccentColor
+	}
+	if _, err := strconv.ParseUint(hex[3:5], 16, 8); err != nil {
+		return "", ErrInvalidAccentColor
+	}
+	if _, err := strconv.ParseUint(hex[5:7], 16, 8); err != nil {
+		return "", ErrInvalidAccentColor
 	}
 
-	return hex, float64(ri), float64(gi), float64(bi), nil
-}
-
-func contrastAgainstWhite(r, g, b float64) float64 {
-	luminance := relativeLuminance(r, g, b)
-	// White's own relative luminance is exactly 1.0.
-	return (1.0 + 0.05) / (luminance + 0.05)
-}
-
-func relativeLuminance(r, g, b float64) float64 {
-	adjust := func(c float64) float64 {
-		c = c / 255
-		if c <= 0.03928 {
-			return c / 12.92
-		}
-		return math.Pow((c+0.055)/1.055, 2.4)
-	}
-	return 0.2126*adjust(r) + 0.7152*adjust(g) + 0.0722*adjust(b)
+	return hex, nil
 }
